@@ -10,7 +10,7 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use crate::{camera, texture};
+use crate::{camera, instance, texture};
 
 struct State {
     surface: wgpu::Surface<'static>,
@@ -29,6 +29,8 @@ struct State {
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
     camera_controller: camera::CameraController,
+    instances: Vec<instance::Instance>,
+    instance_buffer: wgpu::Buffer,
     window: Arc<Window>,
 }
 
@@ -169,6 +171,38 @@ impl State {
             label: Some("camera_bind_group"),
         });
 
+        let instances = (0..NUM_INSTANCES_PER_ROW)
+            .flat_map(|z| {
+                (0..NUM_INSTANCES_PER_ROW).map(move |x| {
+                    let position = glam::Vec3 {
+                        x: x as f32,
+                        y: 0.0,
+                        z: z as f32,
+                    } - INSTANCE_DISPLACEMENT;
+
+                    let rotation = if position == glam::Vec3::ZERO {
+                        // this is needed so an object at (0, 0, 0) won't get scaled to zero
+                        // as Quaternions can affect scale if they're not created correctly
+                        glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0)
+                    } else {
+                        glam::Quat::from_axis_angle(position.normalize(), (45.0_f32).to_radians())
+                    };
+
+                    instance::Instance::new(position, rotation)
+                })
+            })
+            .collect::<Vec<_>>();
+
+        let instance_data = instances
+            .iter()
+            .map(instance::InstanceRaw::from)
+            .collect::<Vec<_>>();
+        let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Instance Buffer"),
+            contents: bytemuck::cast_slice(&instance_data),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
@@ -182,7 +216,7 @@ impl State {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                buffers: &[Vertex::desc()],
+                buffers: &[Vertex::desc(), instance::InstanceRaw::desc()],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -247,6 +281,8 @@ impl State {
             camera_buffer,
             camera_bind_group,
             camera_controller: camera::CameraController::new(0.002),
+            instances,
+            instance_buffer,
             window,
         })
     }
@@ -323,8 +359,9 @@ impl State {
         render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
         render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
         render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-        render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
+        render_pass.draw_indexed(0..self.num_indices, 0, 0..self.instances.len() as _);
 
         // `render_pass` mutably borrows encoder, so it must be dropped before using encoder again
         drop(render_pass);
@@ -405,7 +442,6 @@ impl ApplicationHandler for App {
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-
 struct Vertex {
     position: [f32; 3],
     tex_coords: [f32; 2],
@@ -456,3 +492,10 @@ impl Vertex {
         }
     }
 }
+
+const NUM_INSTANCES_PER_ROW: u32 = 10;
+const INSTANCE_DISPLACEMENT: glam::Vec3 = glam::Vec3::new(
+    NUM_INSTANCES_PER_ROW as f32 * 0.5,
+    0.0,
+    NUM_INSTANCES_PER_ROW as f32 * 0.5,
+);
