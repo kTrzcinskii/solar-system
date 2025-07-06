@@ -10,7 +10,7 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use crate::texture;
+use crate::{camera, texture};
 
 struct State {
     surface: wgpu::Surface<'static>,
@@ -24,6 +24,11 @@ struct State {
     num_indices: u32,
     diffuse_bind_group: wgpu::BindGroup,
     diffuse_texture: texture::Texture,
+    camera: camera::Camera,
+    camera_uniform: camera::CameraUniform,
+    camera_buffer: wgpu::Buffer,
+    camera_bind_group: wgpu::BindGroup,
+    camera_controller: camera::CameraController,
     window: Arc<Window>,
 }
 
@@ -122,10 +127,52 @@ impl State {
 
         let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/main.wgsl"));
 
+        let camera = camera::Camera::new(
+            (0.0, 1.0, 2.0).into(),
+            (0.0, 0.0, 0.0).into(),
+            glam::Vec3::Y,
+            config.width as f32 / config.height as f32,
+            45.0,
+            0.1,
+            100.0,
+        );
+
+        let mut camera_uniform = camera::CameraUniform::new();
+        camera_uniform.update_view_projection_matrix(&camera);
+
+        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Camera Buffer"),
+            contents: bytemuck::cast_slice(&[camera_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let camera_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+                label: Some("camera_bind_group_layout"),
+            });
+        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &camera_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: camera_buffer.as_entire_binding(),
+            }],
+            label: Some("camera_bind_group"),
+        });
+
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&texture_bind_group_layout],
+                bind_group_layouts: &[&texture_bind_group_layout, &camera_bind_group_layout],
                 push_constant_ranges: &[],
             });
 
@@ -195,6 +242,11 @@ impl State {
             num_indices,
             diffuse_bind_group,
             diffuse_texture,
+            camera,
+            camera_uniform,
+            camera_buffer,
+            camera_bind_group,
+            camera_controller: camera::CameraController::new(0.002),
             window,
         })
     }
@@ -208,15 +260,22 @@ impl State {
         }
     }
 
-    fn handle_key(&self, event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
-        match (code, is_pressed) {
-            (KeyCode::Escape, true) => event_loop.exit(),
-            _ => {}
+    fn handle_key(&mut self, event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
+        if code == KeyCode::Escape && is_pressed {
+            event_loop.exit();
         }
+        self.camera_controller.handle_key(code, is_pressed);
     }
 
     fn update(&mut self) {
-        // TODO:
+        self.camera_controller.update_camera(&mut self.camera);
+        self.camera_uniform
+            .update_view_projection_matrix(&self.camera);
+        self.queue.write_buffer(
+            &self.camera_buffer,
+            0,
+            bytemuck::cast_slice(&[self.camera_uniform]),
+        );
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -226,6 +285,8 @@ impl State {
         if !self.is_surface_configured {
             return Ok(());
         }
+
+        self.update();
 
         let output = self.surface.get_current_texture()?;
         let view = output
@@ -260,6 +321,7 @@ impl State {
 
         render_pass.set_pipeline(&self.render_pipeline);
         render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
+        render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
         render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
