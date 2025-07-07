@@ -53,9 +53,13 @@ impl Sphere {
 
                 let tex_coords = [u, 1.0 - v];
 
+                // For a unit sphere, the normal is the same as the position
+                let normal = position;
+
                 vertices.push(SphereVertex {
                     position,
                     tex_coords,
+                    normal,
                 });
             }
         }
@@ -88,6 +92,7 @@ pub trait Vertex {
 pub struct SphereVertex {
     pub position: [f32; 3],
     pub tex_coords: [f32; 2],
+    pub normal: [f32; 3],
 }
 
 impl Vertex for SphereVertex {
@@ -105,6 +110,11 @@ impl Vertex for SphereVertex {
                     offset: mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
                     shader_location: 1,
                     format: wgpu::VertexFormat::Float32x2,
+                },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[f32; 5]>() as wgpu::BufferAddress,
+                    shader_location: 2,
+                    format: wgpu::VertexFormat::Float32x3,
                 },
             ],
         }
