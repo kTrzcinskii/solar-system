@@ -23,7 +23,7 @@ struct State {
     config: wgpu::SurfaceConfiguration,
     is_surface_configured: bool,
     render_pipeline: wgpu::RenderPipeline,
-    diffuse_container: texture::TextureContainer,
+    planets_texture_container: texture::TextureContainer,
     camera: camera::Camera,
     camera_uniform: camera::CameraUniform,
     camera_buffer: wgpu::Buffer,
@@ -84,55 +84,8 @@ impl State {
             desired_maximum_frame_latency: 2,
         };
 
-        let diffuse_texture = texture::Texture::create_texture_array(
-            &device,
-            &queue,
-            &[
-                "./assets/textures/earth.jpg",
-                "./assets/textures/earth_night.jpg",
-            ],
-            "planets-textures",
-        );
-
-        let texture_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            multisampled: false,
-                            view_dimension: wgpu::TextureViewDimension::D2Array,
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-                label: Some("texture_array_bind_group_layout"),
-            });
-
-        let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &texture_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
-                },
-            ],
-            label: Some("texture_array_bind_group"),
-        });
-
-        let diffuse_container = texture::TextureContainer::new(diffuse_texture, diffuse_bind_group);
+        let (planets_texture_container, planet_texture_array_bind_group_layout) =
+            texture::TextureContainer::initialize_plantes_texture_array_container(&device, &queue);
 
         let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/main.wgsl"));
 
@@ -179,10 +132,10 @@ impl State {
         });
 
         const SPACE_BETWEEN: f32 = 3.0;
+        let mut i = 0;
         let instances = (0..NUM_INSTANCES_PER_ROW)
             .flat_map(|z| {
                 (0..NUM_INSTANCES_PER_ROW).map(move |x| {
-                    let id = x;
                     let x = SPACE_BETWEEN * (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
                     let z = SPACE_BETWEEN * (z as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
 
@@ -196,7 +149,8 @@ impl State {
                         glam::Quat::from_axis_angle(position.normalize(), (45.0_f32).to_radians())
                     };
 
-                    instance::Instance::new(position, rotation, id % 2)
+                    i += 1;
+                    instance::Instance::new(position, rotation, i % 9)
                 })
             })
             .collect::<Vec<_>>();
@@ -217,7 +171,10 @@ impl State {
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&texture_bind_group_layout, &camera_bind_group_layout],
+                bind_group_layouts: &[
+                    &planet_texture_array_bind_group_layout,
+                    &camera_bind_group_layout,
+                ],
                 push_constant_ranges: &[],
             });
 
@@ -277,7 +234,7 @@ impl State {
             config,
             is_surface_configured: false,
             render_pipeline,
-            diffuse_container,
+            planets_texture_container,
             camera,
             camera_uniform,
             camera_buffer,
@@ -369,7 +326,7 @@ impl State {
         });
 
         render_pass.set_pipeline(&self.render_pipeline);
-        render_pass.set_texture_array_container(&self.diffuse_container);
+        render_pass.set_texture_array_container(&self.planets_texture_container);
         render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
         render_pass.draw_sphere_instanced(
             &self.sphere,
@@ -454,7 +411,7 @@ impl ApplicationHandler for App {
     }
 }
 
-const NUM_INSTANCES_PER_ROW: u32 = 10;
+const NUM_INSTANCES_PER_ROW: u32 = 15;
 const INSTANCE_DISPLACEMENT: glam::Vec3 = glam::Vec3::new(
     NUM_INSTANCES_PER_ROW as f32 * 0.5,
     0.0,

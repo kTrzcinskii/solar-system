@@ -210,6 +210,71 @@ impl TextureContainer {
             bind_group,
         }
     }
+
+    pub fn initialize_plantes_texture_array_container(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> (Self, wgpu::BindGroupLayout) {
+        let diffuse_texture = Texture::create_texture_array(
+            device,
+            queue,
+            &[
+                "./assets/textures/earth.jpg",
+                "./assets/textures/earth_night.jpg",
+                "./assets/textures/jupiter.jpg",
+                "./assets/textures/mars.jpg",
+                "./assets/textures/mercury.jpg",
+                "./assets/textures/neptune.jpg",
+                "./assets/textures/saturn.jpg",
+                "./assets/textures/uranus.jpg",
+                "./assets/textures/venus.jpg",
+            ],
+            "planets-textures",
+        );
+
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2Array,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+                label: Some("texture_array_bind_group_layout"),
+            });
+
+        let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
+                },
+            ],
+            label: Some("texture_array_bind_group"),
+        });
+
+        (
+            Self::new(diffuse_texture, diffuse_bind_group),
+            texture_bind_group_layout,
+        )
+    }
 }
 
 pub trait SetTextureContainer<'a> {
