@@ -84,9 +84,15 @@ impl State {
             desired_maximum_frame_latency: 2,
         };
 
-        let diffuse_bytes = include_bytes!("../assets/textures/earth.jpg");
-        let diffuse_texture =
-            texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "earth.jpg")?;
+        let diffuse_texture = texture::Texture::create_texture_array(
+            &device,
+            &queue,
+            &[
+                "./assets/textures/earth.jpg",
+                "./assets/textures/earth_night.jpg",
+            ],
+            "planets-textures",
+        );
 
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -96,7 +102,7 @@ impl State {
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Texture {
                             multisampled: false,
-                            view_dimension: wgpu::TextureViewDimension::D2,
+                            view_dimension: wgpu::TextureViewDimension::D2Array,
                             sample_type: wgpu::TextureSampleType::Float { filterable: true },
                         },
                         count: None,
@@ -104,30 +110,27 @@ impl State {
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStages::FRAGMENT,
-                        // This should match the filterable field of the
-                        // corresponding Texture entry above.
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: None,
                     },
                 ],
-                label: Some("texture_bind_group_layout"),
+                label: Some("texture_array_bind_group_layout"),
             });
 
-        let diffuse_bind_group: wgpu::BindGroup =
-            device.create_bind_group(&wgpu::BindGroupDescriptor {
-                layout: &texture_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
-                    },
-                ],
-                label: Some("diffuse_bind_group"),
-            });
+        let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
+                },
+            ],
+            label: Some("texture_array_bind_group"),
+        });
 
         let diffuse_container = texture::TextureContainer::new(diffuse_texture, diffuse_bind_group);
 
@@ -179,6 +182,7 @@ impl State {
         let instances = (0..NUM_INSTANCES_PER_ROW)
             .flat_map(|z| {
                 (0..NUM_INSTANCES_PER_ROW).map(move |x| {
+                    let id = x;
                     let x = SPACE_BETWEEN * (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
                     let z = SPACE_BETWEEN * (z as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
 
@@ -192,7 +196,7 @@ impl State {
                         glam::Quat::from_axis_angle(position.normalize(), (45.0_f32).to_radians())
                     };
 
-                    instance::Instance::new(position, rotation, 0)
+                    instance::Instance::new(position, rotation, id % 2)
                 })
             })
             .collect::<Vec<_>>();
@@ -365,7 +369,7 @@ impl State {
         });
 
         render_pass.set_pipeline(&self.render_pipeline);
-        render_pass.set_texture_container(&self.diffuse_container);
+        render_pass.set_texture_array_container(&self.diffuse_container);
         render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
         render_pass.draw_sphere_instanced(
             &self.sphere,

@@ -121,6 +121,78 @@ impl Texture {
             sampler,
         }
     }
+
+    /// IMPORTANT NOTE: each texture used in this array must be of same size
+    pub fn create_texture_array(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        image_paths: &[&str],
+        label: &str,
+    ) -> Self {
+        let images: Vec<_> = image_paths
+            .iter()
+            .map(|path| image::open(path).expect("Failed to load image"))
+            .collect();
+
+        let (width, height) = images[0].dimensions();
+        let layer_count = images.len() as u32;
+
+        let mut texture_data = Vec::with_capacity((width * height * 4 * layer_count) as usize);
+        for img in &images {
+            let rgba = img.to_rgba8();
+            texture_data.extend_from_slice(&rgba);
+        }
+
+        let texture_size = wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: layer_count,
+        };
+
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: texture_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &texture_data,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * width),
+                rows_per_image: Some(height),
+            },
+            texture_size,
+        );
+
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        Self {
+            _texture: texture,
+            view,
+            sampler,
+        }
+    }
 }
 
 pub struct TextureContainer {
@@ -129,7 +201,8 @@ pub struct TextureContainer {
 }
 
 impl TextureContainer {
-    const TEXTURE_BIND_GROUP_ID: u32 = 0;
+    const TEXTURE_BIND_GROUP_ID: u32 = u32::MAX;
+    const TEXTURE_ARRAY_CONTAINER_ID: u32 = 0;
 
     pub fn new(texture: Texture, bind_group: wgpu::BindGroup) -> Self {
         Self {
@@ -141,6 +214,7 @@ impl TextureContainer {
 
 pub trait SetTextureContainer<'a> {
     fn set_texture_container(&mut self, texture_container: &'a TextureContainer);
+    fn set_texture_array_container(&mut self, texture_container: &'a TextureContainer);
 }
 
 impl<'a, 'b> SetTextureContainer<'b> for wgpu::RenderPass<'a>
@@ -150,6 +224,13 @@ where
     fn set_texture_container(&mut self, texture_container: &'b TextureContainer) {
         self.set_bind_group(
             TextureContainer::TEXTURE_BIND_GROUP_ID,
+            &texture_container.bind_group,
+            &[],
+        );
+    }
+    fn set_texture_array_container(&mut self, texture_container: &'b TextureContainer) {
+        self.set_bind_group(
+            TextureContainer::TEXTURE_ARRAY_CONTAINER_ID,
             &texture_container.bind_group,
             &[],
         );
