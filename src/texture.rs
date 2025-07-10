@@ -2,7 +2,7 @@ use anyhow::Result;
 use image::GenericImageView;
 
 pub struct Texture {
-    pub texture: wgpu::Texture,
+    pub _texture: wgpu::Texture,
     pub view: wgpu::TextureView,
     pub sampler: wgpu::Sampler,
 }
@@ -71,7 +71,7 @@ impl Texture {
         });
 
         Ok(Self {
-            texture,
+            _texture: texture,
             view,
             sampler,
         })
@@ -116,9 +116,42 @@ impl Texture {
         });
 
         Self {
-            texture,
+            _texture: texture,
             view,
             sampler,
         }
+    }
+}
+
+pub struct TextureContainer {
+    _texture: Texture,
+    bind_group: wgpu::BindGroup,
+}
+
+impl TextureContainer {
+    const TEXTURE_BIND_GROUP_ID: u32 = 0;
+
+    pub fn new(texture: Texture, bind_group: wgpu::BindGroup) -> Self {
+        Self {
+            _texture: texture,
+            bind_group,
+        }
+    }
+}
+
+pub trait SetTextureContainer<'a> {
+    fn set_texture_container(&mut self, texture_container: &'a TextureContainer);
+}
+
+impl<'a, 'b> SetTextureContainer<'b> for wgpu::RenderPass<'a>
+where
+    'b: 'a,
+{
+    fn set_texture_container(&mut self, texture_container: &'b TextureContainer) {
+        self.set_bind_group(
+            TextureContainer::TEXTURE_BIND_GROUP_ID,
+            &texture_container.bind_group,
+            &[],
+        );
     }
 }

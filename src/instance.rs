@@ -3,11 +3,16 @@ use std::mem;
 pub struct Instance {
     position: glam::Vec3,
     rotation: glam::Quat,
+    texture_index: u32,
 }
 
 impl Instance {
-    pub fn new(position: glam::Vec3, rotation: glam::Quat) -> Self {
-        Self { position, rotation }
+    pub fn new(position: glam::Vec3, rotation: glam::Quat, texture_index: u32) -> Self {
+        Self {
+            position,
+            rotation,
+            texture_index,
+        }
     }
 }
 
@@ -15,6 +20,9 @@ impl Instance {
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct InstanceRaw {
     model_matrix: [[f32; 4]; 4],
+    texture_index: u32,
+    // for alignment
+    _padding: [f32; 3],
 }
 
 impl InstanceRaw {
@@ -48,6 +56,11 @@ impl InstanceRaw {
                     shader_location: 8,
                     format: wgpu::VertexFormat::Float32x4,
                 },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[f32; 16]>() as wgpu::BufferAddress,
+                    shader_location: 9,
+                    format: wgpu::VertexFormat::Uint32,
+                },
             ],
         }
     }
@@ -59,6 +72,8 @@ impl From<&Instance> for InstanceRaw {
             model_matrix: (glam::Mat4::from_translation(value.position)
                 * glam::Mat4::from_quat(value.rotation))
             .to_cols_array_2d(),
+            texture_index: value.texture_index,
+            _padding: [0.0; 3],
         }
     }
 }

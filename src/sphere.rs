@@ -51,7 +51,7 @@ impl Sphere {
                     theta.sin() * phi.sin(),
                 ];
 
-                let tex_coords = [u, 1.0 - v];
+                let tex_coords = [u, v];
 
                 // For a unit sphere, the normal is the same as the position
                 let normal = position;

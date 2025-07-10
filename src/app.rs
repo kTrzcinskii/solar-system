@@ -13,7 +13,7 @@ use winit::{
 use crate::{
     camera, instance,
     sphere::{self, DrawSphere, Vertex},
-    texture,
+    texture::{self, SetTextureContainer},
 };
 
 struct State {
@@ -23,8 +23,7 @@ struct State {
     config: wgpu::SurfaceConfiguration,
     is_surface_configured: bool,
     render_pipeline: wgpu::RenderPipeline,
-    diffuse_bind_group: wgpu::BindGroup,
-    diffuse_texture: texture::Texture,
+    diffuse_container: texture::TextureContainer,
     camera: camera::Camera,
     camera_uniform: camera::CameraUniform,
     camera_buffer: wgpu::Buffer,
@@ -130,6 +129,8 @@ impl State {
                 label: Some("diffuse_bind_group"),
             });
 
+        let diffuse_container = texture::TextureContainer::new(diffuse_texture, diffuse_bind_group);
+
         let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/main.wgsl"));
 
         let camera = camera::Camera::new(
@@ -191,7 +192,7 @@ impl State {
                         glam::Quat::from_axis_angle(position.normalize(), (45.0_f32).to_radians())
                     };
 
-                    instance::Instance::new(position, rotation)
+                    instance::Instance::new(position, rotation, 0)
                 })
             })
             .collect::<Vec<_>>();
@@ -272,8 +273,7 @@ impl State {
             config,
             is_surface_configured: false,
             render_pipeline,
-            diffuse_bind_group,
-            diffuse_texture,
+            diffuse_container,
             camera,
             camera_uniform,
             camera_buffer,
@@ -365,7 +365,7 @@ impl State {
         });
 
         render_pass.set_pipeline(&self.render_pipeline);
-        render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
+        render_pass.set_texture_container(&self.diffuse_container);
         render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
         render_pass.draw_sphere_instanced(
             &self.sphere,
