@@ -197,12 +197,12 @@ impl Texture {
 
 pub struct TextureContainer {
     _texture: Texture,
-    bind_group: wgpu::BindGroup,
-    bind_group_layout: wgpu::BindGroupLayout,
+    pub bind_group: wgpu::BindGroup,
+    pub bind_group_layout: wgpu::BindGroupLayout,
 }
 
 impl TextureContainer {
-    const TEXTURE_BIND_GROUP_ID: u32 = u32::MAX;
+    const TEXTURE_BIND_GROUP_ID: u32 = 0;
     const TEXTURE_ARRAY_CONTAINER_ID: u32 = 0;
 
     pub fn new(
@@ -281,10 +281,6 @@ impl TextureContainer {
             diffuse_bind_group,
             texture_bind_group_layout,
         )
-    }
-
-    pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
-        &self.bind_group_layout
     }
 }
 

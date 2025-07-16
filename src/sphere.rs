@@ -127,6 +127,7 @@ pub trait DrawSphere<'a> {
         sphere: &'a Sphere,
         instances: Range<u32>,
         camera_bind_group: &'a wgpu::BindGroup,
+        light_bind_group: &'a wgpu::BindGroup,
     );
 }
 
@@ -139,10 +140,12 @@ where
         sphere: &'b Sphere,
         instances: Range<u32>,
         camera_bind_group: &'b wgpu::BindGroup,
+        light_bind_group: &'a wgpu::BindGroup,
     ) {
         self.set_vertex_buffer(0, sphere.vertex_buffer.slice(..));
         self.set_index_buffer(sphere.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
         self.set_bind_group(1, camera_bind_group, &[]);
+        self.set_bind_group(2, light_bind_group, &[]);
         self.draw_indexed(0..sphere.num_elements, 0, instances);
     }
 }

@@ -13,6 +13,7 @@ use winit::{
 use crate::{
     camera, instance,
     sphere::{self, DrawSphere, Vertex},
+    sun,
     texture::{self, SetTextureContainer},
 };
 
@@ -23,6 +24,7 @@ struct State {
     config: wgpu::SurfaceConfiguration,
     is_surface_configured: bool,
     render_pipeline: wgpu::RenderPipeline,
+    sun_render_pipeline: wgpu::RenderPipeline,
     planets_texture_container: texture::TextureContainer,
     camera: camera::Camera,
     camera_uniform: camera::CameraUniform,
@@ -33,6 +35,7 @@ struct State {
     instance_buffer: wgpu::Buffer,
     depth_texture: texture::Texture,
     sphere: sphere::Sphere,
+    sun: sun::Sun,
     window: Arc<Window>,
 }
 
@@ -86,8 +89,6 @@ impl State {
 
         let planets_texture_container =
             texture::TextureContainer::initialize_plantes_texture_array_container(&device, &queue);
-
-        let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/main.wgsl"));
 
         let camera = camera::Camera::new(
             (0.0, 1.0, 2.0).into(),
@@ -168,30 +169,107 @@ impl State {
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
 
+        let sun = sun::Sun::new(&device, &queue, [2.0, 2.0, 2.0]);
+
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
                 bind_group_layouts: &[
-                    &planets_texture_container.bind_group_layout(),
+                    &planets_texture_container.bind_group_layout,
                     &camera_bind_group_layout,
+                    &sun.light.bind_group_layout,
                 ],
                 push_constant_ranges: &[],
             });
 
-        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let render_pipeline = {
+            let shader = wgpu::ShaderModuleDescriptor {
+                label: Some("Normal Shader"),
+                source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/main.wgsl").into()),
+            };
+            Self::create_render_pipeline(
+                &device,
+                &render_pipeline_layout,
+                config.format,
+                Some(texture::Texture::DEPTH_FORMAT),
+                &[sphere::SphereVertex::desc(), instance::InstanceRaw::desc()],
+                shader,
+            )
+        };
+
+        let sun_render_pipeline = {
+            let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Sun Pipeline Layout"),
+                bind_group_layouts: &[
+                    &sun.texture_container.bind_group_layout,
+                    &camera_bind_group_layout,
+                    &sun.light.bind_group_layout,
+                ],
+                push_constant_ranges: &[],
+            });
+            let shader = wgpu::ShaderModuleDescriptor {
+                label: Some("Sun Shader"),
+                source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/sun.wgsl").into()),
+            };
+            Self::create_render_pipeline(
+                &device,
+                &layout,
+                config.format,
+                Some(texture::Texture::DEPTH_FORMAT),
+                &[sphere::SphereVertex::desc()],
+                shader,
+            )
+        };
+
+        let sphere = sphere::Sphere::new(&device);
+
+        Ok(State {
+            surface,
+            device,
+            queue,
+            config,
+            is_surface_configured: false,
+            render_pipeline,
+            sun_render_pipeline,
+            planets_texture_container,
+            camera,
+            camera_uniform,
+            camera_buffer,
+            camera_bind_group,
+            camera_controller: camera::CameraController::new(0.02),
+            instances,
+            instance_buffer,
+            depth_texture,
+            sphere,
+            sun,
+            window,
+        })
+    }
+
+    fn create_render_pipeline(
+        device: &wgpu::Device,
+        layout: &wgpu::PipelineLayout,
+        color_format: wgpu::TextureFormat,
+        depth_format: Option<wgpu::TextureFormat>,
+        vertex_layouts: &[wgpu::VertexBufferLayout],
+        shader: wgpu::ShaderModuleDescriptor,
+    ) -> wgpu::RenderPipeline {
+        let shader = device.create_shader_module(shader);
+
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Render Pipeline"),
-            layout: Some(&render_pipeline_layout),
+            layout: Some(layout),
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                buffers: &[sphere::SphereVertex::desc(), instance::InstanceRaw::desc()],
+                buffers: vertex_layouts,
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
+                    format: color_format,
                     blend: Some(wgpu::BlendState::REPLACE),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
@@ -209,8 +287,8 @@ impl State {
                 // Requires Features::CONSERVATIVE_RASTERIZATION
                 conservative: false,
             },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: texture::Texture::DEPTH_FORMAT,
+            depth_stencil: depth_format.map(|format| wgpu::DepthStencilState {
+                format,
                 depth_write_enabled: true,
                 depth_compare: wgpu::CompareFunction::Less,
                 stencil: wgpu::StencilState::default(),
@@ -223,28 +301,6 @@ impl State {
             },
             multiview: None,
             cache: None,
-        });
-
-        let sphere = sphere::Sphere::new(&device);
-
-        Ok(State {
-            surface,
-            device,
-            queue,
-            config,
-            is_surface_configured: false,
-            render_pipeline,
-            planets_texture_container,
-            camera,
-            camera_uniform,
-            camera_buffer,
-            camera_bind_group,
-            camera_controller: camera::CameraController::new(0.02),
-            instances,
-            instance_buffer,
-            depth_texture,
-            sphere,
-            window,
         })
     }
 
@@ -325,6 +381,7 @@ impl State {
             timestamp_writes: None,
         });
 
+        // Render planets
         render_pass.set_pipeline(&self.render_pipeline);
         render_pass.set_texture_array_container(&self.planets_texture_container);
         render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
@@ -332,6 +389,17 @@ impl State {
             &self.sphere,
             0..self.instances.len() as _,
             &self.camera_bind_group,
+            &self.sun.light.bind_group,
+        );
+
+        // Render sun
+        render_pass.set_pipeline(&self.sun_render_pipeline);
+        render_pass.set_texture_container(&self.sun.texture_container);
+        render_pass.draw_sphere_instanced(
+            &self.sphere,
+            0..1,
+            &self.camera_bind_group,
+            &self.sun.light.bind_group,
         );
 
         // `render_pass` mutably borrows encoder, so it must be dropped before using encoder again
