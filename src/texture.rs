@@ -198,23 +198,29 @@ impl Texture {
 pub struct TextureContainer {
     _texture: Texture,
     bind_group: wgpu::BindGroup,
+    bind_group_layout: wgpu::BindGroupLayout,
 }
 
 impl TextureContainer {
     const TEXTURE_BIND_GROUP_ID: u32 = u32::MAX;
     const TEXTURE_ARRAY_CONTAINER_ID: u32 = 0;
 
-    pub fn new(texture: Texture, bind_group: wgpu::BindGroup) -> Self {
+    pub fn new(
+        texture: Texture,
+        bind_group: wgpu::BindGroup,
+        bind_group_layout: wgpu::BindGroupLayout,
+    ) -> Self {
         Self {
             _texture: texture,
             bind_group,
+            bind_group_layout,
         }
     }
 
     pub fn initialize_plantes_texture_array_container(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-    ) -> (Self, wgpu::BindGroupLayout) {
+    ) -> Self {
         let diffuse_texture = Texture::create_texture_array(
             device,
             queue,
@@ -270,10 +276,15 @@ impl TextureContainer {
             label: Some("texture_array_bind_group"),
         });
 
-        (
-            Self::new(diffuse_texture, diffuse_bind_group),
+        Self::new(
+            diffuse_texture,
+            diffuse_bind_group,
             texture_bind_group_layout,
         )
+    }
+
+    pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.bind_group_layout
     }
 }
 

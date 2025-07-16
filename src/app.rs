@@ -84,7 +84,7 @@ impl State {
             desired_maximum_frame_latency: 2,
         };
 
-        let (planets_texture_container, planet_texture_array_bind_group_layout) =
+        let planets_texture_container =
             texture::TextureContainer::initialize_plantes_texture_array_container(&device, &queue);
 
         let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/main.wgsl"));
@@ -172,7 +172,7 @@ impl State {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
                 bind_group_layouts: &[
-                    &planet_texture_array_bind_group_layout,
+                    &planets_texture_container.bind_group_layout(),
                     &camera_bind_group_layout,
                 ],
                 push_constant_ranges: &[],
