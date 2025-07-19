@@ -20,9 +20,10 @@ impl Instance {
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct InstanceRaw {
     model_matrix: [[f32; 4]; 4],
+    normal_matrix: [[f32; 3]; 3],
     texture_index: u32,
     // for alignment
-    _padding: [f32; 3],
+    _padding: [f32; 6],
 }
 
 impl InstanceRaw {
@@ -56,9 +57,25 @@ impl InstanceRaw {
                     shader_location: 8,
                     format: wgpu::VertexFormat::Float32x4,
                 },
+                // same goes for mat3
                 wgpu::VertexAttribute {
                     offset: mem::size_of::<[f32; 16]>() as wgpu::BufferAddress,
                     shader_location: 9,
+                    format: wgpu::VertexFormat::Float32x3,
+                },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[f32; 19]>() as wgpu::BufferAddress,
+                    shader_location: 10,
+                    format: wgpu::VertexFormat::Float32x3,
+                },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[f32; 22]>() as wgpu::BufferAddress,
+                    shader_location: 11,
+                    format: wgpu::VertexFormat::Float32x3,
+                },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[f32; 25]>() as wgpu::BufferAddress,
+                    shader_location: 12,
                     format: wgpu::VertexFormat::Uint32,
                 },
             ],
@@ -72,8 +89,9 @@ impl From<&Instance> for InstanceRaw {
             model_matrix: (glam::Mat4::from_translation(value.position)
                 * glam::Mat4::from_quat(value.rotation))
             .to_cols_array_2d(),
+            normal_matrix: (glam::Mat3::from_quat(value.rotation)).to_cols_array_2d(),
             texture_index: value.texture_index,
-            _padding: [0.0; 3],
+            _padding: [0.0; 6],
         }
     }
 }

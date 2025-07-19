@@ -169,7 +169,7 @@ impl State {
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
 
-        let sun = sun::Sun::new(&device, &queue, [2.0, 2.0, 2.0]);
+        let sun = sun::Sun::new(&device, &queue, [2.0, 6.0, 2.0]);
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -361,9 +361,9 @@ impl State {
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: 0.1,
-                        g: 0.2,
-                        b: 0.3,
+                        r: 0.01,
+                        g: 0.01,
+                        b: 0.01,
                         a: 1.0,
                     }),
                     store: wgpu::StoreOp::Store,
