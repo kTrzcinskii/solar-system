@@ -1,10 +1,13 @@
-use std::sync::Arc;
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use anyhow::Result;
 use wgpu::util::DeviceExt;
 use winit::{
     application::ApplicationHandler,
-    event::{KeyEvent, WindowEvent},
+    event::{DeviceEvent, ElementState, KeyEvent, WindowEvent},
     event_loop::ActiveEventLoop,
     keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowId},
@@ -18,6 +21,7 @@ use crate::{
 };
 
 struct State {
+    last_render_time: Instant,
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -26,11 +30,7 @@ struct State {
     render_pipeline: wgpu::RenderPipeline,
     sun_render_pipeline: wgpu::RenderPipeline,
     planets_texture_container: texture::TextureContainer,
-    camera: camera::Camera,
-    camera_uniform: camera::CameraUniform,
-    camera_buffer: wgpu::Buffer,
-    camera_bind_group: wgpu::BindGroup,
-    camera_controller: camera::CameraController,
+    camera_container: camera::CameraContainer,
     instances: Vec<instance::Instance>,
     instance_buffer: wgpu::Buffer,
     depth_texture: texture::Texture,
@@ -90,47 +90,7 @@ impl State {
         let planets_texture_container =
             texture::TextureContainer::initialize_plantes_texture_array_container(&device, &queue);
 
-        let camera = camera::Camera::new(
-            (0.0, 1.0, 2.0).into(),
-            (0.0, 0.0, 0.0).into(),
-            glam::Vec3::Y,
-            config.width as f32 / config.height as f32,
-            45.0,
-            0.1,
-            100.0,
-        );
-
-        let mut camera_uniform = camera::CameraUniform::new();
-        camera_uniform.update_view_projection_matrix(&camera);
-
-        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Camera Buffer"),
-            contents: bytemuck::cast_slice(&[camera_uniform]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let camera_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-                label: Some("camera_bind_group_layout"),
-            });
-        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &camera_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: camera_buffer.as_entire_binding(),
-            }],
-            label: Some("camera_bind_group"),
-        });
+        let camera_container = camera::CameraContainer::new(config.width, config.height, &device);
 
         const SPACE_BETWEEN: f32 = 3.0;
         let mut i = 0;
@@ -176,7 +136,7 @@ impl State {
                 label: Some("Render Pipeline Layout"),
                 bind_group_layouts: &[
                     &planets_texture_container.bind_group_layout,
-                    &camera_bind_group_layout,
+                    &camera_container.camera_bind_group_layout,
                     &sun.light.bind_group_layout,
                 ],
                 push_constant_ranges: &[],
@@ -202,7 +162,7 @@ impl State {
                 label: Some("Sun Pipeline Layout"),
                 bind_group_layouts: &[
                     &sun.texture_container.bind_group_layout,
-                    &camera_bind_group_layout,
+                    &camera_container.camera_bind_group_layout,
                     &sun.light.bind_group_layout,
                 ],
                 push_constant_ranges: &[],
@@ -224,6 +184,7 @@ impl State {
         let sphere = sphere::Sphere::new(&device);
 
         Ok(State {
+            last_render_time: Instant::now(),
             surface,
             device,
             queue,
@@ -232,11 +193,7 @@ impl State {
             render_pipeline,
             sun_render_pipeline,
             planets_texture_container,
-            camera,
-            camera_uniform,
-            camera_buffer,
-            camera_bind_group,
-            camera_controller: camera::CameraController::new(0.02),
+            camera_container,
             instances,
             instance_buffer,
             depth_texture,
@@ -312,28 +269,34 @@ impl State {
             self.is_surface_configured = true;
             self.depth_texture =
                 texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
+            self.camera_container.projection.resize(width, height);
         }
     }
 
-    fn handle_key(&mut self, event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
-        if code == KeyCode::Escape && is_pressed {
+    fn handle_key(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        code: KeyCode,
+        element_state: ElementState,
+    ) {
+        if code == KeyCode::Escape && element_state.is_pressed() {
             event_loop.exit();
         }
-        self.camera_controller.handle_key(code, is_pressed);
+        self.camera_container
+            .camera_controller
+            .process_keyboard(code, element_state);
     }
 
-    fn update(&mut self) {
-        self.camera_controller.update_camera(&mut self.camera);
-        self.camera_uniform
-            .update_view_projection_matrix(&self.camera);
+    fn update(&mut self, dt: Duration) {
+        self.camera_container.update(dt);
         self.queue.write_buffer(
-            &self.camera_buffer,
+            &self.camera_container.camera_buffer,
             0,
-            bytemuck::cast_slice(&[self.camera_uniform]),
+            bytemuck::cast_slice(&[self.camera_container.camera_uniform]),
         );
     }
 
-    fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+    fn render(&mut self, dt: Duration) -> Result<(), wgpu::SurfaceError> {
         self.window.request_redraw();
 
         // Cannot renderd to not configured surface
@@ -341,7 +304,7 @@ impl State {
             return Ok(());
         }
 
-        self.update();
+        self.update(dt);
 
         let output = self.surface.get_current_texture()?;
         let view = output
@@ -388,7 +351,7 @@ impl State {
         render_pass.draw_sphere_instanced(
             &self.sphere,
             0..self.instances.len() as _,
-            &self.camera_bind_group,
+            &self.camera_container.camera_bind_group,
             &self.sun.light.bind_group,
         );
 
@@ -398,7 +361,7 @@ impl State {
         render_pass.draw_sphere_instanced(
             &self.sphere,
             0..1,
-            &self.camera_bind_group,
+            &self.camera_container.camera_bind_group,
             &self.sun.light.bind_group,
         );
 
@@ -435,6 +398,10 @@ impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let window_attributes = Window::default_attributes().with_title("Solar System");
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
+        window
+            .set_cursor_grab(winit::window::CursorGrabMode::Confined)
+            .unwrap();
+        window.set_cursor_visible(false);
         self.state = Some(pollster::block_on(State::new(window)).unwrap());
     }
 
@@ -449,11 +416,15 @@ impl ApplicationHandler for App {
             None => return,
         };
 
+        let now = Instant::now();
+
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => state.resize(size.width, size.height),
             WindowEvent::RedrawRequested => {
-                if let Err(e) = state.render() {
+                let dt = now.duration_since(state.last_render_time);
+                state.last_render_time = now;
+                if let Err(e) = state.render(dt) {
                     match e {
                         wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated => {
                             let size = state.window.inner_size();
@@ -473,8 +444,28 @@ impl ApplicationHandler for App {
                         ..
                     },
                 ..
-            } => state.handle_key(event_loop, code, key_state.is_pressed()),
+            } => state.handle_key(event_loop, code, key_state),
+
             _ => {}
+        }
+    }
+
+    fn device_event(
+        &mut self,
+        _event_loop: &ActiveEventLoop,
+        _device_id: winit::event::DeviceId,
+        event: winit::event::DeviceEvent,
+    ) {
+        let state = match &mut self.state {
+            Some(state) => state,
+            None => return,
+        };
+
+        if let DeviceEvent::MouseMotion { delta } = event {
+            state
+                .camera_container
+                .camera_controller
+                .handle_mouse(delta.0, delta.1)
         }
     }
 }
