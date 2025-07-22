@@ -465,7 +465,7 @@ impl ApplicationHandler for App {
             state
                 .camera_container
                 .camera_controller
-                .handle_mouse(delta.0, delta.1)
+                .handle_mouse(delta.0, delta.1);
         }
     }
 }

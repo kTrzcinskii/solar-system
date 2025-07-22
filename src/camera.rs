@@ -145,8 +145,8 @@ impl CameraController {
     }
 
     pub fn handle_mouse(&mut self, mouse_dx: f64, mouse_dy: f64) {
-        self.rotate_horizontal = mouse_dx as f32;
-        self.rotate_vertical = mouse_dy as f32;
+        self.rotate_horizontal += mouse_dx as f32;
+        self.rotate_vertical += mouse_dy as f32;
     }
 
     pub fn update_camera(&mut self, camera: &mut Camera, dt: Duration) {
@@ -200,7 +200,7 @@ impl CameraContainer {
             (-20.0_f32).to_radians(),
         );
         let projection = Projection::new(width, height, (45.0_f32).to_radians(), 0.1, 100.0);
-        let camera_controller = CameraController::new(4.0, 5.0);
+        let camera_controller = CameraController::new(4.0, 3.0);
 
         let mut camera_uniform = CameraUniform::new();
         camera_uniform.update_view_projection_matrix(&camera, &projection);
