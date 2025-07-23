@@ -4,14 +4,16 @@ pub struct Instance {
     position: glam::Vec3,
     rotation: glam::Quat,
     texture_index: u32,
+    scale: f32,
 }
 
 impl Instance {
-    pub fn new(position: glam::Vec3, rotation: glam::Quat, texture_index: u32) -> Self {
+    pub fn new(position: glam::Vec3, rotation: glam::Quat, texture_index: u32, scale: f32) -> Self {
         Self {
             position,
             rotation,
             texture_index,
+            scale,
         }
     }
 }
@@ -85,10 +87,12 @@ impl InstanceRaw {
 
 impl From<&Instance> for InstanceRaw {
     fn from(value: &Instance) -> Self {
+        let scale_matrix = glam::Mat4::from_scale(glam::Vec3::splat(value.scale));
+        let model_matrix = glam::Mat4::from_translation(value.position)
+            * glam::Mat4::from_quat(value.rotation)
+            * scale_matrix;
         InstanceRaw {
-            model_matrix: (glam::Mat4::from_translation(value.position)
-                * glam::Mat4::from_quat(value.rotation))
-            .to_cols_array_2d(),
+            model_matrix: model_matrix.to_cols_array_2d(),
             normal_matrix: (glam::Mat3::from_quat(value.rotation)).to_cols_array_2d(),
             texture_index: value.texture_index,
             _padding: [0.0; 6],

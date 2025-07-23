@@ -15,15 +15,20 @@ pub struct Planets {
 impl Planets {
     const PLANETS_COUNT: usize = 8;
 
+    const PLANETS_RADIUS: [f32; Self::PLANETS_COUNT] =
+        [12.5, 17.5, 25.0, 32.5, 42.5, 55.0, 65.0, 77.5];
+
+    const PLANETS_SCALE: [f32; Self::PLANETS_COUNT] = [0.5, 0.7, 1.3, 1.0, 3.0, 2.5, 1.8, 1.8];
+
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         let instances = (0..Self::PLANETS_COUNT)
             .map(|i| {
-                let position = glam::Vec3::new(5.0 * (i + 1) as f32, 0.0, 12.0);
+                let position = glam::Vec3::new(Self::PLANETS_RADIUS[i], 0.0, 0.0);
                 let rotation = glam::Quat::from_axis_angle(
                     position.normalize(),
                     (5.0 * i as f32).to_radians(),
                 );
-                Instance::new(position, rotation, i as _)
+                Instance::new(position, rotation, i as _, Self::PLANETS_SCALE[i])
             })
             .collect::<Vec<_>>();
 

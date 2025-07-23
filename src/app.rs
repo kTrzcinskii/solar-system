@@ -108,7 +108,7 @@ impl State {
         let render_pipeline = {
             let shader = wgpu::ShaderModuleDescriptor {
                 label: Some("Normal Shader"),
-                source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/main.wgsl").into()),
+                source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/planet.wgsl").into()),
             };
             Self::create_render_pipeline(
                 &device,

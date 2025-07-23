@@ -228,12 +228,12 @@ impl TextureContainer {
                 "./assets/textures/mercury.jpg",
                 "./assets/textures/venus.jpg",
                 "./assets/textures/earth.jpg",
-                "./assets/textures/earth_night.jpg",
                 "./assets/textures/mars.jpg",
                 "./assets/textures/jupiter.jpg",
                 "./assets/textures/saturn.jpg",
                 "./assets/textures/uranus.jpg",
                 "./assets/textures/neptune.jpg",
+                "./assets/textures/earth_night.jpg",
             ],
             "planets-textures",
         );
