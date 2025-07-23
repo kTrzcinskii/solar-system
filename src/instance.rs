@@ -1,8 +1,8 @@
 use std::mem;
 
 pub struct Instance {
-    position: glam::Vec3,
-    rotation: glam::Quat,
+    pub position: glam::Vec3,
+    pub rotation: glam::Quat,
     texture_index: u32,
     scale: f32,
 }

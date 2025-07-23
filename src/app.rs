@@ -21,6 +21,7 @@ use crate::{
 };
 
 struct State {
+    app_start_time: Instant,
     last_render_time: Instant,
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
@@ -147,6 +148,7 @@ impl State {
         let sphere = sphere::Sphere::new(&device);
 
         Ok(State {
+            app_start_time: Instant::now(),
             last_render_time: Instant::now(),
             surface,
             device,
@@ -255,6 +257,8 @@ impl State {
             0,
             bytemuck::cast_slice(&[self.camera_container.camera_uniform]),
         );
+        self.planets.update(self.app_start_time.elapsed());
+        self.planets.sync_instance_buffer(&self.queue);
     }
 
     fn render(&mut self, dt: Duration) -> Result<(), wgpu::SurfaceError> {

@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use wgpu::util::DeviceExt;
 
 use crate::{
@@ -39,7 +41,7 @@ impl Planets {
         let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Instance Buffer"),
             contents: bytemuck::cast_slice(&instance_data),
-            usage: wgpu::BufferUsages::VERTEX,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
 
         let texture_container =
@@ -50,6 +52,31 @@ impl Planets {
             instance_buffer,
             texture_container,
         }
+    }
+
+    pub fn update(&mut self, total_time: Duration) {
+        // TODO: add rotation around itself
+        let t = total_time.as_secs_f32();
+        for (i, instance) in self.instances.iter_mut().enumerate() {
+            let radius = Self::PLANETS_RADIUS[i];
+            let i = i as f32;
+            let speed = 0.2 - 0.02 * i - 0.0002 * i * i;
+            let angle = t * speed;
+            instance.position = glam::Vec3::new(radius * angle.cos(), 0.0, radius * angle.sin());
+        }
+    }
+
+    pub fn sync_instance_buffer(&mut self, queue: &wgpu::Queue) {
+        let instance_data = self
+            .instances
+            .iter()
+            .map(instance::InstanceRaw::from)
+            .collect::<Vec<_>>();
+        queue.write_buffer(
+            &self.instance_buffer,
+            0,
+            bytemuck::cast_slice(&instance_data),
+        );
     }
 }
 
