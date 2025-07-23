@@ -252,11 +252,7 @@ impl State {
 
     fn update(&mut self, dt: Duration) {
         self.camera_container.update(dt);
-        self.queue.write_buffer(
-            &self.camera_container.camera_buffer,
-            0,
-            bytemuck::cast_slice(&[self.camera_container.camera_uniform]),
-        );
+        self.camera_container.sync_camera_buffer(&self.queue);
         self.planets.update(self.app_start_time.elapsed());
         self.planets.sync_instance_buffer(&self.queue);
     }

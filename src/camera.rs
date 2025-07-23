@@ -250,4 +250,12 @@ impl CameraContainer {
         self.camera_uniform
             .update_view_projection_matrix(&self.camera, &self.projection);
     }
+
+    pub fn sync_camera_buffer(&self, queue: &wgpu::Queue) {
+        queue.write_buffer(
+            &self.camera_buffer,
+            0,
+            bytemuck::cast_slice(&[self.camera_uniform]),
+        );
+    }
 }

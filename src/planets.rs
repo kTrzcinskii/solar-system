@@ -66,7 +66,7 @@ impl Planets {
         }
     }
 
-    pub fn sync_instance_buffer(&mut self, queue: &wgpu::Queue) {
+    pub fn sync_instance_buffer(&self, queue: &wgpu::Queue) {
         let instance_data = self
             .instances
             .iter()
