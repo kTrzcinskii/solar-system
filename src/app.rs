@@ -15,9 +15,9 @@ use winit::{
 use crate::{
     camera, instance,
     planets::{self, DrawPlanets},
-    sphere::{self, DrawSphere, Vertex},
-    sun,
-    texture::{self, SetTextureContainer},
+    sphere::{self, Vertex},
+    sun::{self, DrawSun},
+    texture,
 };
 
 struct State {
@@ -90,7 +90,7 @@ impl State {
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
 
-        let sun = sun::Sun::new(&device, &queue, [2.0, 6.0, 2.0]);
+        let sun = sun::Sun::new(&device, &queue);
 
         let planets = planets::Planets::new(&device, &queue);
 
@@ -313,14 +313,11 @@ impl State {
             &self.sun.light.bind_group,
         );
 
-        // Render sun
         render_pass.set_pipeline(&self.sun_render_pipeline);
-        render_pass.set_texture_container(&self.sun.texture_container);
-        render_pass.draw_sphere_instanced(
+        render_pass.draw_sun(
+            &self.sun,
             &self.sphere,
-            0..1,
             &self.camera_container.camera_bind_group,
-            &self.sun.light.bind_group,
         );
 
         // `render_pass` mutably borrows encoder, so it must be dropped before using encoder again

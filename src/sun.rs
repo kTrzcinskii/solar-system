@@ -1,4 +1,8 @@
-use crate::{light, texture};
+use crate::{
+    light,
+    sphere::{DrawSphere, Sphere},
+    texture::{self, SetTextureContainer},
+};
 
 pub struct Sun {
     pub light: light::Light,
@@ -6,7 +10,8 @@ pub struct Sun {
 }
 
 impl Sun {
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, position: [f32; 3]) -> Self {
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
+        let position = [0.0, 0.0, 0.0];
         let light = light::Light::new(device, position, [1.0, 1.0, 1.0]);
 
         let texture_bytes = include_bytes!("../assets/textures/sun.jpg");
@@ -58,5 +63,29 @@ impl Sun {
             light,
             texture_container,
         }
+    }
+}
+
+pub trait DrawSun<'a> {
+    fn draw_sun(
+        &mut self,
+        sun: &'a Sun,
+        sphere: &'a Sphere,
+        camera_bind_group: &'a wgpu::BindGroup,
+    );
+}
+
+impl<'a, 'b> DrawSun<'b> for wgpu::RenderPass<'a>
+where
+    'b: 'a,
+{
+    fn draw_sun(
+        &mut self,
+        sun: &'a Sun,
+        sphere: &'a Sphere,
+        camera_bind_group: &'a wgpu::BindGroup,
+    ) {
+        self.set_texture_container(&sun.texture_container);
+        self.draw_sphere_instanced(sphere, 0..1, camera_bind_group, &sun.light.bind_group);
     }
 }
