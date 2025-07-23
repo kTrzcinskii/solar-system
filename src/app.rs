@@ -4,7 +4,6 @@ use std::{
 };
 
 use anyhow::Result;
-use wgpu::util::DeviceExt;
 use winit::{
     application::ApplicationHandler,
     event::{DeviceEvent, ElementState, KeyEvent, WindowEvent},
@@ -15,6 +14,7 @@ use winit::{
 
 use crate::{
     camera, instance,
+    planets::{self, DrawPlanets},
     sphere::{self, DrawSphere, Vertex},
     sun,
     texture::{self, SetTextureContainer},
@@ -29,13 +29,11 @@ struct State {
     is_surface_configured: bool,
     render_pipeline: wgpu::RenderPipeline,
     sun_render_pipeline: wgpu::RenderPipeline,
-    planets_texture_container: texture::TextureContainer,
     camera_container: camera::CameraContainer,
-    instances: Vec<instance::Instance>,
-    instance_buffer: wgpu::Buffer,
     depth_texture: texture::Texture,
     sphere: sphere::Sphere,
     sun: sun::Sun,
+    planets: planets::Planets,
     window: Arc<Window>,
 }
 
@@ -87,55 +85,20 @@ impl State {
             desired_maximum_frame_latency: 2,
         };
 
-        let planets_texture_container =
-            texture::TextureContainer::initialize_plantes_texture_array_container(&device, &queue);
-
         let camera_container = camera::CameraContainer::new(config.width, config.height, &device);
-
-        const SPACE_BETWEEN: f32 = 3.0;
-        let mut i = 0;
-        let instances = (0..NUM_INSTANCES_PER_ROW)
-            .flat_map(|z| {
-                (0..NUM_INSTANCES_PER_ROW).map(move |x| {
-                    let x = SPACE_BETWEEN * (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
-                    let z = SPACE_BETWEEN * (z as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
-
-                    let position = glam::Vec3 { x, y: 0.0, z } - INSTANCE_DISPLACEMENT;
-
-                    let rotation = if position == glam::Vec3::ZERO {
-                        // this is needed so an object at (0, 0, 0) won't get scaled to zero
-                        // as Quaternions can affect scale if they're not created correctly
-                        glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0)
-                    } else {
-                        glam::Quat::from_axis_angle(position.normalize(), (45.0_f32).to_radians())
-                    };
-
-                    i += 1;
-                    instance::Instance::new(position, rotation, i % 9)
-                })
-            })
-            .collect::<Vec<_>>();
-
-        let instance_data = instances
-            .iter()
-            .map(instance::InstanceRaw::from)
-            .collect::<Vec<_>>();
-        let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Instance Buffer"),
-            contents: bytemuck::cast_slice(&instance_data),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
 
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
 
         let sun = sun::Sun::new(&device, &queue, [2.0, 6.0, 2.0]);
 
+        let planets = planets::Planets::new(&device, &queue);
+
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
                 bind_group_layouts: &[
-                    &planets_texture_container.bind_group_layout,
+                    &planets.texture_container.bind_group_layout,
                     &camera_container.camera_bind_group_layout,
                     &sun.light.bind_group_layout,
                 ],
@@ -192,13 +155,11 @@ impl State {
             is_surface_configured: false,
             render_pipeline,
             sun_render_pipeline,
-            planets_texture_container,
             camera_container,
-            instances,
-            instance_buffer,
             depth_texture,
             sphere,
             sun,
+            planets,
             window,
         })
     }
@@ -344,13 +305,10 @@ impl State {
             timestamp_writes: None,
         });
 
-        // Render planets
         render_pass.set_pipeline(&self.render_pipeline);
-        render_pass.set_texture_array_container(&self.planets_texture_container);
-        render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-        render_pass.draw_sphere_instanced(
+        render_pass.draw_planets(
+            &self.planets,
             &self.sphere,
-            0..self.instances.len() as _,
             &self.camera_container.camera_bind_group,
             &self.sun.light.bind_group,
         );
@@ -469,10 +427,3 @@ impl ApplicationHandler for App {
         }
     }
 }
-
-const NUM_INSTANCES_PER_ROW: u32 = 15;
-const INSTANCE_DISPLACEMENT: glam::Vec3 = glam::Vec3::new(
-    NUM_INSTANCES_PER_ROW as f32 * 0.5,
-    0.0,
-    NUM_INSTANCES_PER_ROW as f32 * 0.5,
-);

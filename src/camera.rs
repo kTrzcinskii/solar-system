@@ -200,7 +200,7 @@ impl CameraContainer {
             (-20.0_f32).to_radians(),
         );
         let projection = Projection::new(width, height, (45.0_f32).to_radians(), 0.1, 100.0);
-        let camera_controller = CameraController::new(4.0, 3.0);
+        let camera_controller = CameraController::new(4.0, 12.0);
 
         let mut camera_uniform = CameraUniform::new();
         camera_uniform.update_view_projection_matrix(&camera, &projection);
