@@ -55,14 +55,22 @@ impl Planets {
     }
 
     pub fn update(&mut self, total_time: Duration) {
-        // TODO: add rotation around itself
         let t = total_time.as_secs_f32();
         for (i, instance) in self.instances.iter_mut().enumerate() {
             let radius = Self::PLANETS_RADIUS[i];
             let i = i as f32;
-            let speed = 0.2 - 0.02 * i - 0.0002 * i * i;
-            let angle = t * speed;
-            instance.position = glam::Vec3::new(radius * angle.cos(), 0.0, radius * angle.sin());
+
+            let movement_speed = 0.2 - 0.02 * i - 0.0002 * i * i;
+            let movement_angle = t * movement_speed;
+            instance.position = glam::Vec3::new(
+                radius * movement_angle.cos(),
+                0.0,
+                radius * movement_angle.sin(),
+            );
+
+            let rotation_speed = 0.6 - 0.05 * i;
+            let rotation_angle = t * rotation_speed;
+            instance.rotation = glam::Quat::from_rotation_y(rotation_angle);
         }
     }
 
