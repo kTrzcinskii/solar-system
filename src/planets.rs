@@ -60,7 +60,7 @@ impl Planets {
             let radius = Self::PLANETS_RADIUS[i];
             let i = i as f32;
 
-            let movement_speed = 0.2 - 0.02 * i - 0.0002 * i * i;
+            let movement_speed = 0.15 - 0.015 * i - 0.0002 * i * i;
             let movement_angle = t * movement_speed;
             instance.position = glam::Vec3::new(
                 radius * movement_angle.cos(),
@@ -68,7 +68,7 @@ impl Planets {
                 radius * movement_angle.sin(),
             );
 
-            let rotation_speed = 0.6 - 0.05 * i;
+            let rotation_speed = 0.5 - 0.05 * i;
             let rotation_angle = t * rotation_speed;
             instance.rotation = glam::Quat::from_rotation_y(rotation_angle);
         }
