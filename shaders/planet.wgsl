@@ -68,6 +68,12 @@ fn vs_main(
 
 // Fragment shader
 
+const EARTH_INDEX: u32 = 2;
+const EARTH_NIGHT_INDEX: u32 = 8;
+
+const AMBIENT_STRENGHT: f32 = 0.02;
+const AMBIENT_STRENGHT_NIGHT: f32 = 0.6;
+
 @group(0) @binding(0)
 var t_diffuse: texture_2d_array<f32>;
 @group(0) @binding(1)
@@ -75,14 +81,21 @@ var s_diffuse: sampler;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let object_color: vec4<f32> = textureSample(t_diffuse, s_diffuse, in.tex_coords, in.texture_index);
-
-    let ambient_strength = 0.05;
-    let ambient_color = light.color * ambient_strength;
-
     let light_dir = normalize(light.position - in.world_position);
 
-    let diffuse_strength = max(dot(in.world_normal, light_dir), 0.0);
+    let dot_product = dot(in.world_normal, light_dir);
+    
+    let faces_sun = dot_product >= 0.0;
+    let texture_index_earth = select(EARTH_NIGHT_INDEX, EARTH_INDEX, faces_sun);
+    let is_earth = in.texture_index == EARTH_INDEX;
+    let texture_index = select(in.texture_index, texture_index_earth, is_earth);
+    let object_color: vec4<f32> = textureSample(t_diffuse, s_diffuse, in.tex_coords, texture_index);
+
+    let earth_at_night = is_earth && !faces_sun;
+    let ambient_strength = select(AMBIENT_STRENGHT, AMBIENT_STRENGHT_NIGHT, earth_at_night);
+    let ambient_color = light.color * ambient_strength;
+
+    let diffuse_strength = max(dot_product, 0.0);
     let diffuse_color = light.color * diffuse_strength;
 
     let result = (ambient_color + diffuse_color) * object_color.xyz;
