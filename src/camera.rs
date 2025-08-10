@@ -7,7 +7,7 @@ const SAFE_FRAC_PI_2: f32 = FRAC_PI_2 - 0.0001;
 
 #[derive(Debug)]
 pub struct Camera {
-    pub position: glam::Vec3,
+    position: glam::Vec3,
     yaw: f32,
     pitch: f32,
 }
@@ -31,6 +31,33 @@ impl Camera {
             glam::Vec3::Y,
         )
     }
+
+    fn from_position_type(position_type: &CameraPositionType) -> Self {
+        match position_type {
+            CameraPositionType::Top => Self::from_top(),
+            CameraPositionType::Bottom => Self::from_bottom(),
+            CameraPositionType::Side => Self::from_side(),
+        }
+    }
+
+    fn from_top() -> Self {
+        Self::new((-11.1138, 181.3259, 33.6055), -1.5678, -1.4289)
+    }
+
+    fn from_bottom() -> Self {
+        Self::new((0.8443, 14.8632, -3.6063), 1.6038, -0.9264)
+    }
+
+    fn from_side() -> Self {
+        Self::new((-62.4076, 10.1057, -12.04746), 6.4251, -0.1552)
+    }
+}
+
+#[derive(Debug)]
+enum CameraPositionType {
+    Top,
+    Bottom,
+    Side,
 }
 
 pub struct Projection {
@@ -91,6 +118,7 @@ pub struct CameraController {
     rotate_vertical: f32,
     speed: f32,
     sensitivity: f32,
+    next_camera_position: Option<CameraPositionType>,
 }
 
 impl CameraController {
@@ -106,6 +134,7 @@ impl CameraController {
             rotate_vertical: 0.0,
             speed,
             sensitivity,
+            next_camera_position: None,
         }
     }
 
@@ -140,6 +169,18 @@ impl CameraController {
                 self.amount_down = amount;
                 true
             }
+            KeyCode::KeyT => {
+                self.next_camera_position = Some(CameraPositionType::Top);
+                true
+            }
+            KeyCode::KeyB => {
+                self.next_camera_position = Some(CameraPositionType::Bottom);
+                true
+            }
+            KeyCode::KeyG => {
+                self.next_camera_position = Some(CameraPositionType::Side);
+                true
+            }
             _ => false,
         }
     }
@@ -150,6 +191,13 @@ impl CameraController {
     }
 
     pub fn update_camera(&mut self, camera: &mut Camera, dt: Duration) {
+        // If new position requested just update position
+        if let Some(pos_type) = &self.next_camera_position {
+            *camera = Camera::from_position_type(pos_type);
+            self.next_camera_position = None;
+            return;
+        }
+
         let dt = dt.as_secs_f32();
 
         // Calculate the forward vector based on yaw and pitch (look direction)
@@ -194,11 +242,7 @@ pub struct CameraContainer {
 
 impl CameraContainer {
     pub fn new(width: u32, height: u32, device: &wgpu::Device) -> Self {
-        let camera = Camera::new(
-            (0.0, 5.0, 10.0),
-            (-90.0_f32).to_radians(),
-            (-20.0_f32).to_radians(),
-        );
+        let camera = Camera::from_top();
         let projection = Projection::new(width, height, (45.0_f32).to_radians(), 0.1, 500.0);
         let camera_controller = CameraController::new(4.0, 12.0);
 
@@ -249,6 +293,12 @@ impl CameraContainer {
         self.camera_controller.update_camera(&mut self.camera, dt);
         self.camera_uniform
             .update_view_projection_matrix(&self.camera, &self.projection);
+        log::info!(
+            "Camera positon: {:?}, pitch: {}, yaw:{}",
+            self.camera.position,
+            self.camera.pitch,
+            self.camera.yaw
+        );
     }
 
     pub fn sync_camera_buffer(&self, queue: &wgpu::Queue) {
