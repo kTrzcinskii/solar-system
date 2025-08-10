@@ -1,3 +1,4 @@
+use core::f32;
 use std::time::Duration;
 
 use wgpu::util::DeviceExt;
@@ -22,10 +23,27 @@ impl Planets {
 
     const PLANETS_SCALE: [f32; Self::PLANETS_COUNT] = [0.5, 0.7, 1.3, 1.0, 3.0, 2.5, 1.8, 1.8];
 
+    const INITIAL_OFFSET: [f32; Self::PLANETS_COUNT] = [
+        f32::consts::FRAC_PI_4 * 3.0,
+        f32::consts::FRAC_PI_4 * 7.0,
+        f32::consts::PI * 2.0,
+        f32::consts::FRAC_PI_2 * 3.0,
+        f32::consts::FRAC_PI_2,
+        f32::consts::FRAC_PI_4 * 5.0,
+        f32::consts::PI,
+        f32::consts::FRAC_PI_4,
+    ];
+
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         let instances = (0..Self::PLANETS_COUNT)
             .map(|i| {
-                let position = glam::Vec3::new(Self::PLANETS_RADIUS[i], 0.0, 0.0);
+                let initial_offset = Self::INITIAL_OFFSET[i];
+                let radius = Self::PLANETS_RADIUS[i];
+                let position = glam::Vec3::new(
+                    radius * initial_offset.cos(),
+                    0.0,
+                    radius * initial_offset.sin(),
+                );
                 let rotation = glam::Quat::from_axis_angle(
                     position.normalize(),
                     (5.0 * i as f32).to_radians(),
@@ -58,10 +76,11 @@ impl Planets {
         let t = total_time.as_secs_f32();
         for (i, instance) in self.instances.iter_mut().enumerate() {
             let radius = Self::PLANETS_RADIUS[i];
+            let offset = Self::INITIAL_OFFSET[i];
             let i = i as f32;
 
             let movement_speed = 0.15 - 0.015 * i - 0.0002 * i * i;
-            let movement_angle = t * movement_speed;
+            let movement_angle = t * movement_speed + offset;
             instance.position = glam::Vec3::new(
                 radius * movement_angle.cos(),
                 0.0,
