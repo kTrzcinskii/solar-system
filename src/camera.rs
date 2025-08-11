@@ -90,12 +90,16 @@ impl Projection {
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct CameraUniform {
     view_projection_matrix: [[f32; 4]; 4],
+    inverse_projection_matrix: [[f32; 4]; 4],
+    inverse_view_matrix: [[f32; 4]; 4],
 }
 
 impl CameraUniform {
     pub fn new() -> Self {
         CameraUniform {
             view_projection_matrix: glam::Mat4::IDENTITY.to_cols_array_2d(),
+            inverse_projection_matrix: glam::Mat4::IDENTITY.to_cols_array_2d(),
+            inverse_view_matrix: glam::Mat4::IDENTITY.to_cols_array_2d(),
         }
     }
 
@@ -103,6 +107,8 @@ impl CameraUniform {
         let view_matrix = camera.view_matrix();
         let projections_matrix = projection.projection_matrix();
         self.view_projection_matrix = (projections_matrix * view_matrix).to_cols_array_2d();
+        self.inverse_projection_matrix = projections_matrix.inverse().to_cols_array_2d();
+        self.inverse_view_matrix = view_matrix.inverse().to_cols_array_2d();
     }
 }
 
@@ -259,7 +265,7 @@ impl CameraContainer {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,

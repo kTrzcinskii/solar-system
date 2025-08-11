@@ -5,6 +5,7 @@ mod instance;
 mod light;
 mod pipeline;
 mod planets;
+mod skybox;
 mod sphere;
 mod sun;
 mod texture;

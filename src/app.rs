@@ -15,6 +15,7 @@ use winit::{
 use crate::{
     camera, hdr, instance, pipeline,
     planets::{self, DrawPlanets},
+    skybox,
     sphere::{self, Vertex},
     sun::{self, DrawSun},
     texture,
@@ -30,12 +31,14 @@ struct State {
     is_surface_configured: bool,
     render_pipeline: wgpu::RenderPipeline,
     sun_render_pipeline: wgpu::RenderPipeline,
+    skybox_render_pipeline: wgpu::RenderPipeline,
     camera_container: camera::CameraContainer,
     depth_texture: texture::Texture,
     sphere: sphere::Sphere,
     sun: sun::Sun,
     planets: planets::Planets,
     hdr: hdr::HdrPipeline,
+    skybox: skybox::Skybox,
     window: Arc<Window>,
 }
 
@@ -62,8 +65,8 @@ impl State {
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: None,
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
+                required_features: wgpu::Features::all_webgpu_mask() & adapter.features(),
+                required_limits: wgpu::Limits::downlevel_defaults(),
                 memory_hints: Default::default(),
                 trace: wgpu::Trace::Off,
             })
@@ -83,13 +86,38 @@ impl State {
             height: size.height,
             present_mode: surface_caps.present_modes[0],
             alpha_mode: surface_caps.alpha_modes[0],
-            view_formats: vec![],
+            view_formats: vec![surface_format.add_srgb_suffix()],
             desired_maximum_frame_latency: 2,
         };
 
         let hdr = hdr::HdrPipeline::new(&device, &config);
 
         let camera_container = camera::CameraContainer::new(config.width, config.height, &device);
+
+        let skybox = skybox::Skybox::new(&device, &queue)?;
+
+        let skybox_render_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Sky Pipeline Layout"),
+                bind_group_layouts: &[
+                    &camera_container.camera_bind_group_layout,
+                    skybox.bind_group_layout(),
+                ],
+                push_constant_ranges: &[],
+            });
+
+        let skybox_render_pipeline = {
+            let shader = wgpu::include_wgsl!("../shaders/skybox.wgsl");
+            pipeline::create_render_pipeline(
+                &device,
+                &skybox_render_pipeline_layout,
+                hdr.format(),
+                Some(texture::Texture::DEPTH_FORMAT),
+                &[],
+                wgpu::PrimitiveTopology::TriangleList,
+                shader,
+            )
+        };
 
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
@@ -156,12 +184,14 @@ impl State {
             is_surface_configured: false,
             render_pipeline,
             sun_render_pipeline,
+            skybox_render_pipeline,
             camera_container,
             depth_texture,
             sphere,
             sun,
             planets,
             hdr,
+            skybox,
             window,
         })
     }
@@ -258,13 +288,19 @@ impl State {
             &self.camera_container.camera_bind_group,
         );
 
+        render_pass.set_pipeline(&self.skybox_render_pipeline);
+        render_pass.set_bind_group(0, &self.camera_container.camera_bind_group, &[]);
+        render_pass.set_bind_group(1, self.skybox.bind_group(), &[]);
+        render_pass.draw(0..3, 0..1);
+
         // `render_pass` mutably borrows encoder, so it must be dropped before using encoder again
         drop(render_pass);
 
         let output = self.surface.get_current_texture()?;
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
+        let view = output.texture.create_view(&wgpu::TextureViewDescriptor {
+            format: Some(self.config.format.add_srgb_suffix()),
+            ..Default::default()
+        });
 
         // Apply tonemapping (HDR -> SDR)
         self.hdr.process(&mut encoder, &view);
