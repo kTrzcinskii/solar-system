@@ -4,15 +4,19 @@ use std::time::Duration;
 use wgpu::util::DeviceExt;
 
 use crate::{
+    camera, hdr,
     instance::{self, Instance},
-    sphere::{DrawSphere, Sphere},
+    pipeline,
+    sphere::{self, DrawSphere, Sphere, Vertex},
+    sun,
     texture::{self, SetTextureContainer},
 };
 
 pub struct Planets {
-    pub instances: Vec<instance::Instance>,
-    pub instance_buffer: wgpu::Buffer,
-    pub texture_container: texture::TextureContainer,
+    instances: Vec<instance::Instance>,
+    instance_buffer: wgpu::Buffer,
+    texture_container: texture::TextureContainer,
+    render_pipeline: wgpu::RenderPipeline,
 }
 
 impl Planets {
@@ -34,7 +38,13 @@ impl Planets {
         f32::consts::FRAC_PI_4,
     ];
 
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        hdr: &hdr::HdrPipeline,
+        camera_container: &camera::CameraContainer,
+        sun: &sun::Sun,
+    ) -> Self {
         let instances = (0..Self::PLANETS_COUNT)
             .map(|i| {
                 let initial_offset = Self::INITIAL_OFFSET[i];
@@ -65,10 +75,32 @@ impl Planets {
         let texture_container =
             texture::TextureContainer::initialize_plantes_texture_array_container(device, queue);
 
+        let render_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Render Pipeline Layout"),
+                bind_group_layouts: &[
+                    &texture_container.bind_group_layout,
+                    &camera_container.camera_bind_group_layout,
+                    &sun.light().bind_group_layout,
+                ],
+                push_constant_ranges: &[],
+            });
+        let shader = wgpu::include_wgsl!("../shaders/planet.wgsl");
+        let render_pipeline = pipeline::create_render_pipeline(
+            device,
+            &render_pipeline_layout,
+            hdr.format(),
+            Some(texture::Texture::DEPTH_FORMAT),
+            &[sphere::SphereVertex::desc(), instance::InstanceRaw::desc()],
+            wgpu::PrimitiveTopology::TriangleList,
+            shader,
+        );
+
         Planets {
             instances,
             instance_buffer,
             texture_container,
+            render_pipeline,
         }
     }
 
@@ -128,6 +160,7 @@ where
         camera_bind_group: &'b wgpu::BindGroup,
         light_bind_group: &'a wgpu::BindGroup,
     ) {
+        self.set_pipeline(&planets.render_pipeline);
         self.set_texture_array_container(&planets.texture_container);
         self.set_vertex_buffer(1, planets.instance_buffer.slice(..));
         self.draw_sphere_instanced(

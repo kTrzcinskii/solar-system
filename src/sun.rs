@@ -1,16 +1,22 @@
 use crate::{
-    light,
-    sphere::{DrawSphere, Sphere},
+    camera, hdr, light, pipeline,
+    sphere::{self, DrawSphere, Sphere, Vertex},
     texture::{self, SetTextureContainer},
 };
 
 pub struct Sun {
-    pub light: light::Light,
-    pub texture_container: texture::TextureContainer,
+    light: light::Light,
+    texture_container: texture::TextureContainer,
+    render_pipeline: wgpu::RenderPipeline,
 }
 
 impl Sun {
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        hdr: &hdr::HdrPipeline,
+        camera_container: &camera::CameraContainer,
+    ) -> Self {
         let position = [0.0, 0.0, 0.0];
         let light = light::Light::new(device, position, [1.0, 1.0, 1.0]);
 
@@ -59,10 +65,35 @@ impl Sun {
         let texture_container =
             texture::TextureContainer::new(texture, texture_bind_group, texture_bind_group_layout);
 
+        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Sun Pipeline Layout"),
+            bind_group_layouts: &[
+                &texture_container.bind_group_layout,
+                &camera_container.camera_bind_group_layout,
+                &light.bind_group_layout,
+            ],
+            push_constant_ranges: &[],
+        });
+        let shader = wgpu::include_wgsl!("../shaders/sun.wgsl");
+        let render_pipeline = pipeline::create_render_pipeline(
+            device,
+            &layout,
+            hdr.format(),
+            Some(texture::Texture::DEPTH_FORMAT),
+            &[sphere::SphereVertex::desc()],
+            wgpu::PrimitiveTopology::TriangleList,
+            shader,
+        );
+
         Self {
             light,
             texture_container,
+            render_pipeline,
         }
+    }
+
+    pub fn light(&self) -> &light::Light {
+        &self.light
     }
 }
 
@@ -85,6 +116,7 @@ where
         sphere: &'a Sphere,
         camera_bind_group: &'a wgpu::BindGroup,
     ) {
+        self.set_pipeline(&sun.render_pipeline);
         self.set_texture_container(&sun.texture_container);
         self.draw_sphere_instanced(sphere, 0..1, camera_bind_group, &sun.light.bind_group);
     }

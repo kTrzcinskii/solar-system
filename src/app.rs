@@ -13,10 +13,9 @@ use winit::{
 };
 
 use crate::{
-    camera, hdr, instance, pipeline,
+    camera, hdr, pipeline,
     planets::{self, DrawPlanets},
-    skybox,
-    sphere::{self, Vertex},
+    skybox, sphere,
     sun::{self, DrawSun},
     texture,
 };
@@ -29,8 +28,6 @@ struct State {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     is_surface_configured: bool,
-    render_pipeline: wgpu::RenderPipeline,
-    sun_render_pipeline: wgpu::RenderPipeline,
     skybox_render_pipeline: wgpu::RenderPipeline,
     camera_container: camera::CameraContainer,
     depth_texture: texture::Texture,
@@ -122,55 +119,9 @@ impl State {
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
 
-        let sun = sun::Sun::new(&device, &queue);
+        let sun = sun::Sun::new(&device, &queue, &hdr, &camera_container);
 
-        let planets = planets::Planets::new(&device, &queue);
-
-        let render_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[
-                    &planets.texture_container.bind_group_layout,
-                    &camera_container.camera_bind_group_layout,
-                    &sun.light.bind_group_layout,
-                ],
-                push_constant_ranges: &[],
-            });
-
-        let render_pipeline = {
-            let shader = wgpu::include_wgsl!("../shaders/planet.wgsl");
-            pipeline::create_render_pipeline(
-                &device,
-                &render_pipeline_layout,
-                hdr.format(),
-                Some(texture::Texture::DEPTH_FORMAT),
-                &[sphere::SphereVertex::desc(), instance::InstanceRaw::desc()],
-                wgpu::PrimitiveTopology::TriangleList,
-                shader,
-            )
-        };
-
-        let sun_render_pipeline = {
-            let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Sun Pipeline Layout"),
-                bind_group_layouts: &[
-                    &sun.texture_container.bind_group_layout,
-                    &camera_container.camera_bind_group_layout,
-                    &sun.light.bind_group_layout,
-                ],
-                push_constant_ranges: &[],
-            });
-            let shader = wgpu::include_wgsl!("../shaders/sun.wgsl");
-            pipeline::create_render_pipeline(
-                &device,
-                &layout,
-                hdr.format(),
-                Some(texture::Texture::DEPTH_FORMAT),
-                &[sphere::SphereVertex::desc()],
-                wgpu::PrimitiveTopology::TriangleList,
-                shader,
-            )
-        };
+        let planets = planets::Planets::new(&device, &queue, &hdr, &camera_container, &sun);
 
         let sphere = sphere::Sphere::new(&device);
 
@@ -182,8 +133,6 @@ impl State {
             queue,
             config,
             is_surface_configured: false,
-            render_pipeline,
-            sun_render_pipeline,
             skybox_render_pipeline,
             camera_container,
             depth_texture,
@@ -273,15 +222,13 @@ impl State {
             timestamp_writes: None,
         });
 
-        render_pass.set_pipeline(&self.render_pipeline);
         render_pass.draw_planets(
             &self.planets,
             &self.sphere,
             &self.camera_container.camera_bind_group,
-            &self.sun.light.bind_group,
+            &self.sun.light().bind_group,
         );
 
-        render_pass.set_pipeline(&self.sun_render_pipeline);
         render_pass.draw_sun(
             &self.sun,
             &self.sphere,
