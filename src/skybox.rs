@@ -1,17 +1,22 @@
 use anyhow::Result;
 
-use crate::{hdr, texture};
+use crate::{camera, hdr, pipeline, texture};
 
 pub struct Skybox {
     _cubemap: texture::CubeTexture,
-    bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
+    render_pipeline: wgpu::RenderPipeline,
 }
 
 impl Skybox {
     const DST_SIZE: u32 = 1080;
 
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<Self> {
+    pub fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        hdr: &hdr::HdrPipeline,
+        camera_container: &camera::CameraContainer,
+    ) -> Result<Self> {
         let hdr_loader = hdr::HdrLoader::new(device);
         let skybox_bytes = include_bytes!("../assets/textures/stars.jpg");
         let skybox_texture = hdr_loader.equirectangular_bytes(
@@ -22,7 +27,7 @@ impl Skybox {
             Some("Skybox"),
         )?;
 
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("environment_layout"),
             entries: &[
                 wgpu::BindGroupLayoutEntry {
@@ -46,7 +51,7 @@ impl Skybox {
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("environment_bind_group"),
-            layout: &layout,
+            layout: &bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -59,18 +64,46 @@ impl Skybox {
             ],
         });
 
+        let render_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Sky Pipeline Layout"),
+                bind_group_layouts: &[
+                    &camera_container.camera_bind_group_layout,
+                    &bind_group_layout,
+                ],
+                push_constant_ranges: &[],
+            });
+        let shader = wgpu::include_wgsl!("../shaders/skybox.wgsl");
+        let render_pipeline = pipeline::create_render_pipeline(
+            device,
+            &render_pipeline_layout,
+            hdr.format(),
+            Some(texture::Texture::DEPTH_FORMAT),
+            &[],
+            wgpu::PrimitiveTopology::TriangleList,
+            shader,
+        );
+
         Ok(Skybox {
             _cubemap: skybox_texture,
-            bind_group_layout: layout,
             bind_group,
+            render_pipeline,
         })
     }
+}
 
-    pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
-        &self.bind_group_layout
-    }
+pub trait DrawSkybox<'a> {
+    fn draw_skybox(&mut self, skybox: &'a Skybox, camera_bind_group: &'a wgpu::BindGroup);
+}
 
-    pub fn bind_group(&self) -> &wgpu::BindGroup {
-        &self.bind_group
+impl<'a, 'b> DrawSkybox<'b> for wgpu::RenderPass<'a>
+where
+    'b: 'a,
+{
+    fn draw_skybox(&mut self, skybox: &'a Skybox, camera_bind_group: &'a wgpu::BindGroup) {
+        self.set_pipeline(&skybox.render_pipeline);
+        self.set_bind_group(0, camera_bind_group, &[]);
+        self.set_bind_group(1, &skybox.bind_group, &[]);
+        self.draw(0..3, 0..1);
     }
 }

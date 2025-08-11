@@ -13,9 +13,10 @@ use winit::{
 };
 
 use crate::{
-    camera, hdr, pipeline,
+    camera, hdr,
     planets::{self, DrawPlanets},
-    skybox, sphere,
+    skybox::{self, DrawSkybox},
+    sphere,
     sun::{self, DrawSun},
     texture,
 };
@@ -28,7 +29,6 @@ struct State {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     is_surface_configured: bool,
-    skybox_render_pipeline: wgpu::RenderPipeline,
     camera_container: camera::CameraContainer,
     depth_texture: texture::Texture,
     sphere: sphere::Sphere,
@@ -91,30 +91,7 @@ impl State {
 
         let camera_container = camera::CameraContainer::new(config.width, config.height, &device);
 
-        let skybox = skybox::Skybox::new(&device, &queue)?;
-
-        let skybox_render_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Sky Pipeline Layout"),
-                bind_group_layouts: &[
-                    &camera_container.camera_bind_group_layout,
-                    skybox.bind_group_layout(),
-                ],
-                push_constant_ranges: &[],
-            });
-
-        let skybox_render_pipeline = {
-            let shader = wgpu::include_wgsl!("../shaders/skybox.wgsl");
-            pipeline::create_render_pipeline(
-                &device,
-                &skybox_render_pipeline_layout,
-                hdr.format(),
-                Some(texture::Texture::DEPTH_FORMAT),
-                &[],
-                wgpu::PrimitiveTopology::TriangleList,
-                shader,
-            )
-        };
+        let skybox = skybox::Skybox::new(&device, &queue, &hdr, &camera_container)?;
 
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
@@ -133,7 +110,6 @@ impl State {
             queue,
             config,
             is_surface_configured: false,
-            skybox_render_pipeline,
             camera_container,
             depth_texture,
             sphere,
@@ -235,10 +211,7 @@ impl State {
             &self.camera_container.camera_bind_group,
         );
 
-        render_pass.set_pipeline(&self.skybox_render_pipeline);
-        render_pass.set_bind_group(0, &self.camera_container.camera_bind_group, &[]);
-        render_pass.set_bind_group(1, self.skybox.bind_group(), &[]);
-        render_pass.draw(0..3, 0..1);
+        render_pass.draw_skybox(&self.skybox, &self.camera_container.camera_bind_group);
 
         // `render_pass` mutably borrows encoder, so it must be dropped before using encoder again
         drop(render_pass);
