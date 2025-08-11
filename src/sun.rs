@@ -1,11 +1,17 @@
+use std::time::Duration;
+
+use wgpu::util::DeviceExt;
+
 use crate::{
-    camera, hdr, light, pipeline,
+    camera, hdr, instance, light, pipeline,
     sphere::{self, DrawSphere, Sphere, Vertex},
     texture::{self, SetTextureContainer},
 };
 
 pub struct Sun {
     light: light::Light,
+    instance: instance::Instance,
+    instance_buffer: wgpu::Buffer,
     texture_container: texture::TextureContainer,
     render_pipeline: wgpu::RenderPipeline,
 }
@@ -19,6 +25,16 @@ impl Sun {
     ) -> Self {
         let position = [0.0, 0.0, 0.0];
         let light = light::Light::new(device, position, [1.0, 1.0, 1.0]);
+
+        let instance =
+            instance::Instance::new(position.into(), glam::Quat::from_rotation_y(0.0), 0, 6.5);
+
+        let instance_data = vec![instance::InstanceRaw::from(&instance)];
+        let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Sun Instance Buffer"),
+            contents: bytemuck::cast_slice(&instance_data),
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        });
 
         let texture_bytes = include_bytes!("../assets/textures/sun.jpg");
         let texture =
@@ -80,13 +96,16 @@ impl Sun {
             &layout,
             hdr.format(),
             Some(texture::Texture::DEPTH_FORMAT),
-            &[sphere::SphereVertex::desc()],
+            &[sphere::SphereVertex::desc(), instance::InstanceRaw::desc()],
             wgpu::PrimitiveTopology::TriangleList,
             shader,
+            Some("render_pipelie_sun"),
         );
 
         Self {
             light,
+            instance,
+            instance_buffer,
             texture_container,
             render_pipeline,
         }
@@ -94,6 +113,22 @@ impl Sun {
 
     pub fn light(&self) -> &light::Light {
         &self.light
+    }
+
+    pub fn update(&mut self, total_time: Duration) {
+        let t = total_time.as_secs_f32();
+        let rotation_speed = 0.12;
+        let rotation_angle = t * rotation_speed;
+        self.instance.rotation = glam::Quat::from_rotation_y(rotation_angle);
+    }
+
+    pub fn sync_instance_buffer(&self, queue: &wgpu::Queue) {
+        let instance_data = vec![instance::InstanceRaw::from(&self.instance)];
+        queue.write_buffer(
+            &self.instance_buffer,
+            0,
+            bytemuck::cast_slice(&instance_data),
+        );
     }
 }
 
@@ -118,6 +153,7 @@ where
     ) {
         self.set_pipeline(&sun.render_pipeline);
         self.set_texture_container(&sun.texture_container);
+        self.set_vertex_buffer(1, sun.instance_buffer.slice(..));
         self.draw_sphere_instanced(sphere, 0..1, camera_bind_group, &sun.light.bind_group);
     }
 }

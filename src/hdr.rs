@@ -88,6 +88,7 @@ impl HdrPipeline {
             &[],
             wgpu::PrimitiveTopology::TriangleList,
             shader,
+            Some("render_pipeline_hdr"),
         );
 
         Self {

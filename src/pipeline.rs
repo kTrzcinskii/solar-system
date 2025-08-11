@@ -1,3 +1,4 @@
+#[allow(clippy::too_many_arguments)]
 pub fn create_render_pipeline(
     device: &wgpu::Device,
     layout: &wgpu::PipelineLayout,
@@ -6,11 +7,12 @@ pub fn create_render_pipeline(
     vertex_layouts: &[wgpu::VertexBufferLayout],
     topology: wgpu::PrimitiveTopology,
     shader: wgpu::ShaderModuleDescriptor,
+    label: Option<&str>,
 ) -> wgpu::RenderPipeline {
     let shader = device.create_shader_module(shader);
 
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("Render Pipeline"),
+        label,
         layout: Some(layout),
         vertex: wgpu::VertexState {
             module: &shader,

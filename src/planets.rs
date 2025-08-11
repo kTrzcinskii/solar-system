@@ -94,6 +94,7 @@ impl Planets {
             &[sphere::SphereVertex::desc(), instance::InstanceRaw::desc()],
             wgpu::PrimitiveTopology::TriangleList,
             shader,
+            Some("render_pipeline_planets"),
         );
 
         Planets {

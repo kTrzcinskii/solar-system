@@ -82,6 +82,7 @@ impl Skybox {
             &[],
             wgpu::PrimitiveTopology::TriangleList,
             shader,
+            Some("render_pipeline_skybox"),
         );
 
         Ok(Skybox {

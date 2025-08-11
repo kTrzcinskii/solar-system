@@ -153,6 +153,8 @@ impl State {
         self.camera_container.sync_camera_buffer(&self.queue);
         self.planets.update(self.app_start_time.elapsed());
         self.planets.sync_instance_buffer(&self.queue);
+        self.sun.update(self.app_start_time.elapsed());
+        self.sun.sync_instance_buffer(&self.queue);
     }
 
     fn render(&mut self, dt: Duration) -> Result<(), wgpu::SurfaceError> {
@@ -253,8 +255,10 @@ impl Default for App {
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        // TODO: research about setting max window size based on adapter limits
         let window_attributes = Window::default_attributes().with_title("Solar System");
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
+        // TODO: allow user to switch it on/off by clicking `L`
         window
             .set_cursor_grab(winit::window::CursorGrabMode::Confined)
             .unwrap();
