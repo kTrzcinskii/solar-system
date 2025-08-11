@@ -13,7 +13,7 @@ use winit::{
 };
 
 use crate::{
-    camera, instance,
+    camera, hdr, instance, pipeline,
     planets::{self, DrawPlanets},
     sphere::{self, Vertex},
     sun::{self, DrawSun},
@@ -35,6 +35,7 @@ struct State {
     sphere: sphere::Sphere,
     sun: sun::Sun,
     planets: planets::Planets,
+    hdr: hdr::HdrPipeline,
     window: Arc<Window>,
 }
 
@@ -86,6 +87,8 @@ impl State {
             desired_maximum_frame_latency: 2,
         };
 
+        let hdr = hdr::HdrPipeline::new(&device, &config);
+
         let camera_container = camera::CameraContainer::new(config.width, config.height, &device);
 
         let depth_texture =
@@ -107,16 +110,14 @@ impl State {
             });
 
         let render_pipeline = {
-            let shader = wgpu::ShaderModuleDescriptor {
-                label: Some("Normal Shader"),
-                source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/planet.wgsl").into()),
-            };
-            Self::create_render_pipeline(
+            let shader = wgpu::include_wgsl!("../shaders/planet.wgsl");
+            pipeline::create_render_pipeline(
                 &device,
                 &render_pipeline_layout,
-                config.format,
+                hdr.format(),
                 Some(texture::Texture::DEPTH_FORMAT),
                 &[sphere::SphereVertex::desc(), instance::InstanceRaw::desc()],
+                wgpu::PrimitiveTopology::TriangleList,
                 shader,
             )
         };
@@ -131,16 +132,14 @@ impl State {
                 ],
                 push_constant_ranges: &[],
             });
-            let shader = wgpu::ShaderModuleDescriptor {
-                label: Some("Sun Shader"),
-                source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/sun.wgsl").into()),
-            };
-            Self::create_render_pipeline(
+            let shader = wgpu::include_wgsl!("../shaders/sun.wgsl");
+            pipeline::create_render_pipeline(
                 &device,
                 &layout,
-                config.format,
+                hdr.format(),
                 Some(texture::Texture::DEPTH_FORMAT),
                 &[sphere::SphereVertex::desc()],
+                wgpu::PrimitiveTopology::TriangleList,
                 shader,
             )
         };
@@ -162,65 +161,8 @@ impl State {
             sphere,
             sun,
             planets,
+            hdr,
             window,
-        })
-    }
-
-    fn create_render_pipeline(
-        device: &wgpu::Device,
-        layout: &wgpu::PipelineLayout,
-        color_format: wgpu::TextureFormat,
-        depth_format: Option<wgpu::TextureFormat>,
-        vertex_layouts: &[wgpu::VertexBufferLayout],
-        shader: wgpu::ShaderModuleDescriptor,
-    ) -> wgpu::RenderPipeline {
-        let shader = device.create_shader_module(shader);
-
-        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Render Pipeline"),
-            layout: Some(layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: vertex_layouts,
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: color_format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
-                polygon_mode: wgpu::PolygonMode::Fill,
-                // Requires Features::DEPTH_CLIP_CONTROL
-                unclipped_depth: false,
-                // Requires Features::CONSERVATIVE_RASTERIZATION
-                conservative: false,
-            },
-            depth_stencil: depth_format.map(|format| wgpu::DepthStencilState {
-                format,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            multiview: None,
-            cache: None,
         })
     }
 
@@ -233,6 +175,7 @@ impl State {
             self.depth_texture =
                 texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
             self.camera_container.projection.resize(width, height);
+            self.hdr.resize(&self.device, width, height);
         }
     }
 
@@ -267,11 +210,6 @@ impl State {
 
         self.update(dt);
 
-        let output = self.surface.get_current_texture()?;
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -281,7 +219,7 @@ impl State {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Render Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view,
+                view: self.hdr.view(),
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color {
@@ -322,6 +260,14 @@ impl State {
 
         // `render_pass` mutably borrows encoder, so it must be dropped before using encoder again
         drop(render_pass);
+
+        let output = self.surface.get_current_texture()?;
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        // Apply tonemapping (HDR -> SDR)
+        self.hdr.process(&mut encoder, &view);
 
         // submit will accept anything that implements IntoIter
         self.queue.submit(std::iter::once(encoder.finish()));

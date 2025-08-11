@@ -1,7 +1,9 @@
 pub mod app;
 mod camera;
+mod hdr;
 mod instance;
 mod light;
+mod pipeline;
 mod planets;
 mod sphere;
 mod sun;
