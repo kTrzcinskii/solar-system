@@ -6,6 +6,7 @@ use std::{
 use anyhow::Result;
 use winit::{
     application::ApplicationHandler,
+    dpi::PhysicalSize,
     event::{DeviceEvent, ElementState, KeyEvent, WindowEvent},
     event_loop::ActiveEventLoop,
     keyboard::{KeyCode, PhysicalKey},
@@ -36,6 +37,7 @@ struct State {
     planets: planets::Planets,
     hdr: hdr::HdrPipeline,
     skybox: skybox::Skybox,
+    max_size: PhysicalSize<u32>,
     window: Arc<Window>,
 }
 
@@ -58,6 +60,10 @@ impl State {
                 compatible_surface: Some(&surface),
             })
             .await?;
+
+        let max_dims = adapter.limits().max_texture_dimension_3d;
+        let max_size = PhysicalSize::new(max_dims, max_dims);
+        window.set_max_inner_size(Some(max_size));
 
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
@@ -117,6 +123,7 @@ impl State {
             planets,
             hdr,
             skybox,
+            max_size,
             window,
         };
         state.update_window();
@@ -278,7 +285,6 @@ impl Default for App {
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        // TODO: research about setting max window size based on adapter limits
         let window_attributes = Window::default_attributes().with_title("Solar System");
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
         self.state = Some(pollster::block_on(State::new(window)).unwrap());
@@ -299,7 +305,19 @@ impl ApplicationHandler for App {
 
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
-            WindowEvent::Resized(size) => state.resize(size.width, size.height),
+            WindowEvent::Resized(size) => {
+                if size.width > state.max_size.width || size.height > state.max_size.height {
+                    let clamped_size = PhysicalSize::new(
+                        size.width.min(state.max_size.width),
+                        size.height.min(state.max_size.height),
+                    );
+                    state.resize(clamped_size.width, clamped_size.height);
+                    let _ = state.window.request_inner_size(clamped_size);
+                    state.window.request_redraw();
+                    return;
+                }
+                state.resize(size.width, size.height);
+            }
             WindowEvent::RedrawRequested => {
                 let dt = now.duration_since(state.last_render_time);
                 state.last_render_time = now;
@@ -324,7 +342,6 @@ impl ApplicationHandler for App {
                     },
                 ..
             } => state.handle_key(event_loop, code, key_state),
-
             _ => {}
         }
     }
