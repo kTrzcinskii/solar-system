@@ -125,10 +125,11 @@ pub struct CameraController {
     speed: f32,
     sensitivity: f32,
     next_camera_position: Option<CameraPositionType>,
+    cursor_locked: bool,
 }
 
 impl CameraController {
-    pub fn new(speed: f32, sensitivity: f32) -> Self {
+    pub fn new(speed: f32, sensitivity: f32, cursor_locked: bool) -> Self {
         Self {
             amount_left: 0.0,
             amount_right: 0.0,
@@ -141,6 +142,7 @@ impl CameraController {
             speed,
             sensitivity,
             next_camera_position: None,
+            cursor_locked,
         }
     }
 
@@ -225,14 +227,24 @@ impl CameraController {
         camera.position += up * (self.amount_up - self.amount_down) * self.speed * dt;
 
         // Rotate
-        camera.yaw += (self.rotate_horizontal).to_radians() * self.sensitivity * dt;
-        camera.pitch += (-self.rotate_vertical).to_radians() * self.sensitivity * dt;
+        if self.cursor_locked {
+            camera.yaw += (self.rotate_horizontal).to_radians() * self.sensitivity * dt;
+            camera.pitch += (-self.rotate_vertical).to_radians() * self.sensitivity * dt;
+        }
 
         self.rotate_horizontal = 0.0;
         self.rotate_vertical = 0.0;
 
         // Clamp pitch
         camera.pitch = camera.pitch.clamp(-SAFE_FRAC_PI_2, SAFE_FRAC_PI_2);
+    }
+
+    pub fn cursor_locked(&self) -> bool {
+        self.cursor_locked
+    }
+
+    pub fn swap_cursor_locked(&mut self) {
+        self.cursor_locked = !self.cursor_locked
     }
 }
 
@@ -250,7 +262,7 @@ impl CameraContainer {
     pub fn new(width: u32, height: u32, device: &wgpu::Device) -> Self {
         let camera = Camera::from_top();
         let projection = Projection::new(width, height, (45.0_f32).to_radians(), 0.1, 500.0);
-        let camera_controller = CameraController::new(4.0, 12.0);
+        let camera_controller = CameraController::new(4.0, 12.0, true);
 
         let mut camera_uniform = CameraUniform::new();
         camera_uniform.update_view_projection_matrix(&camera, &projection);

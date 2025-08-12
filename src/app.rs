@@ -102,7 +102,7 @@ impl State {
 
         let sphere = sphere::Sphere::new(&device);
 
-        Ok(State {
+        let state = State {
             app_start_time: Instant::now(),
             last_render_time: Instant::now(),
             surface,
@@ -118,7 +118,9 @@ impl State {
             hdr,
             skybox,
             window,
-        })
+        };
+        state.update_window();
+        Ok(state)
     }
 
     fn resize(&mut self, width: u32, height: u32) {
@@ -143,9 +145,30 @@ impl State {
         if code == KeyCode::Escape && element_state.is_pressed() {
             event_loop.exit();
         }
+        if code == KeyCode::KeyL && element_state.is_pressed() {
+            self.camera_container.camera_controller.swap_cursor_locked();
+            self.update_window();
+        }
         self.camera_container
             .camera_controller
             .process_keyboard(code, element_state);
+    }
+
+    fn update_window(&self) {
+        match self.camera_container.camera_controller.cursor_locked() {
+            true => {
+                self.window
+                    .set_cursor_grab(winit::window::CursorGrabMode::Confined)
+                    .unwrap();
+                self.window.set_cursor_visible(false);
+            }
+            false => {
+                self.window
+                    .set_cursor_grab(winit::window::CursorGrabMode::None)
+                    .unwrap();
+                self.window.set_cursor_visible(true);
+            }
+        }
     }
 
     fn update(&mut self, dt: Duration) {
@@ -258,11 +281,6 @@ impl ApplicationHandler for App {
         // TODO: research about setting max window size based on adapter limits
         let window_attributes = Window::default_attributes().with_title("Solar System");
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
-        // TODO: allow user to switch it on/off by clicking `L`
-        window
-            .set_cursor_grab(winit::window::CursorGrabMode::Confined)
-            .unwrap();
-        window.set_cursor_visible(false);
         self.state = Some(pollster::block_on(State::new(window)).unwrap());
     }
 
