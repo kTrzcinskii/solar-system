@@ -18,7 +18,7 @@ impl Skybox {
         camera_container: &camera::CameraContainer,
     ) -> Result<Self> {
         let hdr_loader = hdr::HdrLoader::new(device);
-        let skybox_bytes = include_bytes!("../assets/textures/stars.jpg");
+        let skybox_bytes = include_bytes!("../assets/textures/skybox.hdr");
         let skybox_texture = hdr_loader.equirectangular_bytes(
             device,
             queue,
