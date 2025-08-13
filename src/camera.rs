@@ -262,7 +262,7 @@ impl CameraContainer {
     pub fn new(width: u32, height: u32, device: &wgpu::Device) -> Self {
         let camera = Camera::from_top();
         let projection = Projection::new(width, height, (45.0_f32).to_radians(), 0.1, 500.0);
-        let camera_controller = CameraController::new(4.0, 12.0, true);
+        let camera_controller = CameraController::new(16.0, 12.0, true);
 
         let mut camera_uniform = CameraUniform::new();
         camera_uniform.update_view_projection_matrix(&camera, &projection);
