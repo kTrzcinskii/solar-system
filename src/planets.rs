@@ -7,9 +7,11 @@ use crate::{
     camera, hdr,
     instance::{self, Instance},
     pipeline,
-    sphere::{self, DrawSphere, Sphere, Vertex},
+    ring::{self, DrawRing},
+    sphere::{self, DrawSphere, Sphere},
     sun,
     texture::{self, SetTextureContainer},
+    vertex::Vertex,
 };
 
 pub struct Planets {
@@ -17,6 +19,7 @@ pub struct Planets {
     instance_buffer: wgpu::Buffer,
     texture_container: texture::TextureContainer,
     render_pipeline: wgpu::RenderPipeline,
+    ring: ring::Ring,
 }
 
 impl Planets {
@@ -38,6 +41,8 @@ impl Planets {
         f32::consts::FRAC_PI_4,
     ];
 
+    const SATURN_INDEX: usize = 5;
+
     pub fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -54,10 +59,7 @@ impl Planets {
                     0.0,
                     radius * initial_offset.sin(),
                 );
-                let rotation = glam::Quat::from_axis_angle(
-                    position.normalize(),
-                    (5.0 * i as f32).to_radians(),
-                );
+                let rotation = glam::Quat::from_rotation_y(0.0);
                 Instance::new(position, rotation, i as _, Self::PLANETS_SCALE[i])
             })
             .collect::<Vec<_>>();
@@ -97,11 +99,14 @@ impl Planets {
             Some("render_pipeline_planets"),
         );
 
+        let ring = ring::Ring::new(device, queue, hdr, camera_container, sun);
+
         Planets {
             instances,
             instance_buffer,
             texture_container,
             render_pipeline,
+            ring,
         }
     }
 
@@ -110,6 +115,7 @@ impl Planets {
         for (i, instance) in self.instances.iter_mut().enumerate() {
             let radius = Self::PLANETS_RADIUS[i];
             let offset = Self::INITIAL_OFFSET[i];
+            let is_saturn = i == Self::SATURN_INDEX;
             let i = i as f32;
 
             let movement_speed = 0.15 - 0.015 * i - 0.0002 * i * i;
@@ -120,13 +126,17 @@ impl Planets {
                 radius * movement_angle.sin(),
             );
 
-            let rotation_speed = 0.5 - 0.05 * i;
-            let rotation_angle = t * rotation_speed;
-            instance.rotation = glam::Quat::from_rotation_y(rotation_angle);
+            if !is_saturn {
+                let rotation_speed = 0.5 - 0.05 * i;
+                let rotation_angle = t * rotation_speed;
+                instance.rotation = glam::Quat::from_rotation_y(rotation_angle);
+            }
         }
     }
 
     pub fn sync_instance_buffer(&self, queue: &wgpu::Queue) {
+        let instance_saturn = &self.instances[Self::SATURN_INDEX];
+        self.ring.update_instance(instance_saturn, queue);
         let instance_data = self
             .instances
             .iter()
@@ -170,5 +180,6 @@ where
             camera_bind_group,
             light_bind_group,
         );
+        self.draw_ring(&planets.ring, camera_bind_group, light_bind_group);
     }
 }

@@ -2,6 +2,8 @@ use std::{mem, ops::Range};
 
 use wgpu::util::DeviceExt;
 
+use crate::vertex::Vertex;
+
 pub struct Sphere {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
@@ -81,10 +83,6 @@ impl Sphere {
 
         (vertices, indices)
     }
-}
-
-pub trait Vertex {
-    fn desc() -> wgpu::VertexBufferLayout<'static>;
 }
 
 #[repr(C)]

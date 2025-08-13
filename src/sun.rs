@@ -4,8 +4,9 @@ use wgpu::util::DeviceExt;
 
 use crate::{
     camera, hdr, instance, light, pipeline,
-    sphere::{self, DrawSphere, Sphere, Vertex},
+    sphere::{self, DrawSphere, Sphere},
     texture::{self, SetTextureContainer},
+    vertex::Vertex,
 };
 
 pub struct Sun {
